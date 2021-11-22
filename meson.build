@@ -17,7 +17,6 @@ executable('dpdk-rdma',
   dependencies: dpdk,
   c_args: [
     '-DALLOW_EXPERIMENTAL_API',
-    '-DDEBUG_ETHERNET',
     '-DDEBUG_RDMA'
   ],
   install : false

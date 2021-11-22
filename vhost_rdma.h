@@ -26,6 +26,7 @@
 #include <rte_interrupts.h>
 
 #include "virtio_rdma.h"
+#include "vhost_user.h"
 
 #define RTE_LOGTYPE_RDMA RTE_LOGTYPE_USER2
 
@@ -36,23 +37,13 @@
 #define ROCE_V2_UDP_DPORT 4791
 
 #define NUM_OF_RDMA_QUEUES 256
+#define NUM_OF_RDMA_PORT 1
 
-#define VHOST_RDMA_FEATURE ((1ULL << VIRTIO_RING_F_EVENT_IDX) | \
-	(1ULL << VIRTIO_F_VERSION_1) |\
+/* VIRTIO_F_EVENT_IDX is NOT supported now */
+#define VHOST_RDMA_FEATURE ((1ULL << VIRTIO_F_VERSION_1) |\
 	(1ULL << VIRTIO_RING_F_INDIRECT_DESC) | \
 	(1ULL << VHOST_USER_F_PROTOCOL_FEATURES))
 // TODO: rdma features
-
-struct vhost_rdma_queue {
-	struct rte_vhost_vring vring;
-
-	uint16_t last_avail_idx;
-	uint16_t last_used_idx;
-	uint16_t id;
-
-	bool avail_wrap_counter;
-	bool used_wrap_counter;
-};
 
 struct vhost_rdma_dev {
 	uint16_t eth_port_id;
@@ -63,11 +54,13 @@ struct vhost_rdma_dev {
 
 	struct rte_ring* tx_ring;
 	struct rte_ring* rx_ring;
-	struct vhost_rdma_queue vqs[NUM_OF_RDMA_QUEUES];
+	struct vhost_queue vqs[NUM_OF_RDMA_QUEUES];
 
 	struct rte_intr_handle ctrl_intr_handle;
 	int ctrl_intr_registed;
+
 	struct virtio_rdma_config config;
+	struct virtio_rdma_port_attr port_attr[NUM_OF_RDMA_PORT];
 };
 
 int vhost_rdma_construct(const char *path, uint16_t eth_port_id,

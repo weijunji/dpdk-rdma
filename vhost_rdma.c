@@ -48,7 +48,7 @@ static void
 destroy_device(__rte_unused int vid)
 {
 	struct vhost_rdma_dev *dev;
-	struct vhost_rdma_queue *vq;
+	struct vhost_queue *vq;
 
 	dev = &g_vhost_rdma_dev;
 
@@ -86,13 +86,7 @@ extern_vhost_pre_msg_handler(__rte_unused int vid, void *_msg)
 	case VHOST_USER_SET_MEM_TABLE:
 		break;
 	case VHOST_USER_GET_CONFIG: {
-		// TODO: init config
-		dev->config.phys_port_cnt = 1;
-		dev->config.max_cq = 64;
-		dev->config.max_qp = 64;
-		dev->config.max_srq = 0;
-
-		memcpy(msg->payload.cfg.region, &dev->config, sizeof(dev->config));
+		rte_memcpy(msg->payload.cfg.region, &dev->config, sizeof(dev->config));
 		return RTE_VHOST_MSG_RESULT_REPLY;
 	}
 	case VHOST_USER_SET_CONFIG:
@@ -125,21 +119,24 @@ new_connection(int vid)
 static int
 vring_state_changed(int vid, uint16_t queue_id, int enable) {
 	struct vhost_rdma_dev *dev = &g_vhost_rdma_dev;
-	struct vhost_rdma_queue *vq;
+	struct vhost_queue *vq;
 
 	assert(dev->vid == vid);
 
 	if (enable) {
-		RDMA_LOG_DEBUG("queue %d enabled", queue_id);
 		vq = &dev->vqs[queue_id];
+
+		if (vq->enabled)
+			return 0;
+
 		vq->id = queue_id;
 
 		assert(rte_vhost_get_vhost_vring(dev->vid, queue_id,
 						 &vq->vring) == 0);
 		assert(rte_vhost_get_vring_base(dev->vid, queue_id,
-					       &vq->last_avail_idx,
-					       &vq->last_used_idx) == 0);
-
+						&vq->last_avail_idx,
+						&vq->last_used_idx) == 0);
+		vq->enabled = true;
 		/*
 		 * ctrl_handler MUST start when the virtqueue is enabled,
 		 * NOT start in new_device(). because driver will query some
@@ -192,6 +189,7 @@ vhost_rdma_destroy(const char* path)
 int
 vhost_rdma_construct(const char *path, uint16_t eth_port_id,
 					struct rte_ring* tx_ring, struct rte_ring* rx_ring) {
+	struct vhost_rdma_dev *dev = &g_vhost_rdma_dev;
 	int ret;
 
 	RDMA_LOG_INFO("rdma path: %s", path);
@@ -212,6 +210,8 @@ vhost_rdma_construct(const char *path, uint16_t eth_port_id,
 
 	/* set vhost user protocol features */
 	vhost_rdma_install_rte_compat_hooks(path);
+
+	vhost_rdma_init_config(dev);
 
 	rte_vhost_driver_callback_register(path,
 					   &vhost_rdma_device_ops);

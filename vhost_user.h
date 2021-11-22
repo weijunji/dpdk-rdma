@@ -23,6 +23,8 @@
 
 #include <linux/vhost_types.h>
 
+#include <rte_vhost.h>
+
 #define VHOST_USER_MEMORY_MAX_NREGIONS		8
 #define VHOST_USER_MAX_CONFIG_SIZE		256
 
@@ -83,5 +85,64 @@ struct vhost_user_msg {
 		struct vhost_user_config cfg;
 	} payload;
 } __rte_packed;
+
+struct vhost_queue {
+	struct rte_vhost_vring vring;
+
+	uint16_t last_avail_idx;
+	uint16_t last_used_idx;
+	uint16_t id;
+
+	bool enabled;
+
+	bool avail_wrap_counter;
+	bool used_wrap_counter;
+};
+
+static __rte_always_inline uint16_t
+vq_get_desc_idx(struct vhost_queue *vq)
+{
+	uint16_t desc_idx;
+	uint16_t last_avail_idx;
+
+	last_avail_idx = vq->last_avail_idx & (vq->vring.size - 1);
+	desc_idx = vq->vring.avail->ring[last_avail_idx];
+	vq->last_avail_idx++;
+
+	return desc_idx;
+}
+
+static __rte_always_inline void
+vhost_queue_notify(int vid, struct vhost_queue* vq) {
+	rte_vhost_vring_call(vid, vq->id);
+}
+
+static __rte_always_inline uint64_t
+gpa_to_vva(struct rte_vhost_memory *mem, uint64_t gpa, uint64_t *len)
+{
+	assert(mem != NULL);
+	return rte_vhost_va_from_guest_pa(mem, gpa, len);
+}
+
+static __rte_always_inline bool
+descriptor_has_next_split(struct vring_desc *cur_desc)
+{
+	return !!(cur_desc->flags & VRING_DESC_F_NEXT);
+}
+
+static __rte_always_inline struct vring_desc *
+vring_get_next_desc(struct vring_desc *table, struct vring_desc *desc)
+{
+	if (desc->flags & VRING_DESC_F_NEXT)
+		return &table[desc->next];
+
+	return NULL;
+}
+
+static __rte_always_inline bool
+vhost_vq_is_avail(struct vhost_queue *vq)
+{
+	return vq->vring.avail->idx != vq->last_avail_idx;
+}
 
 #endif

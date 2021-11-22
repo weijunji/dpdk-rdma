@@ -1,5 +1,5 @@
 /*
- * Vhost-user RDMA device demo: ib ops
+ * Vhost-user RDMA device demo: vhost-user spec
  *
  * Copyright (C) 2021 Junji Wei Bytedance Inc.
  *
@@ -18,14 +18,18 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-#ifndef __VHOST_RDMA_IB_H__
-#define __VHOST_RDMA_IB_H__
+#include "vhost_rdma.h"
+#include "vhost_user.h"
 
-#define VHOST_MAX_GID_TBL_LEN 1024
-#define VHOST_PORT_PKEY_TBL_LEN 1
-#define VHOST_PORT_MAX_VL_NUM 1
+static uint16_t
+vq_get_desc_idx(struct vhost_queue *vq)
+{
+	uint16_t desc_idx;
+	uint16_t last_avail_idx;
 
-void vhost_rdma_handle_ctrl(void* arg);
-void vhost_rdma_init_config(struct vhost_rdma_dev *dev);
+	last_avail_idx = vq->last_avail_idx & (vq->vring.size - 1);
+	desc_idx = vq->vring.avail->ring[last_avail_idx];
+	vq->last_avail_idx++;
 
-#endif
+	return desc_idx;
+}

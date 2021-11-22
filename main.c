@@ -132,7 +132,10 @@ eth_rx() {
 	}
 }
 
-/* pair_dev --> vhost */
+/*
+ * pair_dev --> vhost
+ * WARNING: ip reassemble is NOT supported now
+ */
 static __rte_always_inline void
 eth_tx() {
 	struct rte_mbuf *pkts[MAX_PKTS_BURST];
@@ -307,11 +310,12 @@ main(int argc, char **argv)
 
 	#ifdef DEBUG_ETHERNET
 	rte_log_set_global_level(RTE_LOG_DEBUG);
+	rte_log_set_level_pattern("lib.vhost.*", RTE_LOG_NOTICE);
 	rte_log_set_level(RTE_LOGTYPE_ETHER, RTE_LOG_DEBUG);
-	rte_log_set_level(RTE_LOGTYPE_RDMA, RTE_LOG_DEBUG);
 	#endif
 	#ifdef DEBUG_RDMA
 	rte_log_set_global_level(RTE_LOG_DEBUG);
+	rte_log_set_level_pattern("lib.vhost.*", RTE_LOG_NOTICE);
 	rte_log_set_level(RTE_LOGTYPE_RDMA, RTE_LOG_DEBUG);
 	#endif
 
