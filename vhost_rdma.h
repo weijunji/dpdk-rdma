@@ -27,6 +27,7 @@
 
 #include "virtio_rdma.h"
 #include "vhost_user.h"
+#include "vhost_rdma_pool.h"
 
 #define RTE_LOGTYPE_RDMA RTE_LOGTYPE_USER2
 
@@ -42,6 +43,8 @@
 #define VHOST_MAX_GID_TBL_LEN 1024
 #define VHOST_PORT_PKEY_TBL_LEN 1
 #define VHOST_PORT_MAX_VL_NUM 1
+
+#define VHOST_MAX_PD_NUM 0x7ffc
 
 #define IB_DEFAULT_PKEY_FULL	0xFFFF
 
@@ -76,6 +79,9 @@ struct vhost_rdma_dev {
 	// only one port
 	struct virtio_rdma_port_attr port_attr;
 	struct vhost_rdma_gid gid_tbl[VHOST_MAX_GID_TBL_LEN];
+
+	struct vhost_rdma_pool pd_pool;
+	struct vhost_rdma_pool mr_pool;
 };
 
 int vhost_rdma_construct(const char *path, uint16_t eth_port_id,

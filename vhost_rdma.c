@@ -55,6 +55,8 @@ destroy_device(__rte_unused int vid)
 	if (!dev->started)
 		return;
 
+	vhost_rdma_destroy_ib(dev);
+
 	for (int i = 0; i < NUM_OF_RDMA_QUEUES; i++) {
 		vq = &dev->vqs[i];
 

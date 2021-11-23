@@ -1,5 +1,5 @@
 /*
- * Vhost-user RDMA device demo: ib ops
+ * Vhost-user RDMA device demo: obj pool
  *
  * Copyright (C) 2021 Junji Wei Bytedance Inc.
  *
@@ -18,47 +18,26 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-#ifndef __VHOST_RDMA_IB_H__
-#define __VHOST_RDMA_IB_H__
+#ifndef __VHOST_RDMA_POOL_H__
+#define __VHOST_RDMA_POOL_H__
 
-struct vhost_rdma_pd {
-	uint32_t pdn;
+#include <stdint.h>
+
+#include <rte_bitmap.h>
+
+struct vhost_rdma_pool {
+	void* objs;
+	uint32_t num;
+	uint32_t size;
+
+	struct rte_bitmap* bitmap;
+	void* bitmap_mem;
 };
 
-enum vhost_rdma_mr_type {
-	VHOST_MR_TYPE_NONE,
-	VHOST_MR_TYPE_DMA,
-	VHOST_MR_TYPE_MR,
-};
-
-struct vhost_rdma_mr {
-	struct vhost_rdma_pd *pd;
-	enum vhost_rdma_mr_type	type;
-	uint64_t	va;
-	uint64_t	iova;
-	size_t		length;
-	uint32_t	offset;
-	int			access;
-
-	uint32_t	lkey;
-	uint32_t	rkey;
-
-	// int			page_shift;
-	// int			page_mask;
-	// int			map_shift;
-	// int			map_mask;
-
-	// uint32_t	num_buf;
-	// uint32_t	nbuf;
-
-	// uint32_t	max_buf;
-	// uint32_t	num_map;
-
-	// struct rxe_map		**map;
-};
-
-void vhost_rdma_handle_ctrl(void* arg);
-void vhost_rdma_init_ib(struct vhost_rdma_dev *dev);
-void vhost_rdma_destroy_ib(struct vhost_rdma_dev *dev);
-
+int vhost_rdma_pool_init(struct vhost_rdma_pool* pool, char* name, uint32_t num,
+					uint32_t size, bool start_zero);
+void vhost_rdma_pool_destroy(struct vhost_rdma_pool* pool);
+void* vhost_rdma_pool_alloc(struct vhost_rdma_pool* pool, uint32_t *idx);
+void vhost_rdma_pool_free(struct vhost_rdma_pool* pool, uint32_t idx);
+void* vhost_rdma_pool_get(struct vhost_rdma_pool* pool, uint32_t idx);
 #endif

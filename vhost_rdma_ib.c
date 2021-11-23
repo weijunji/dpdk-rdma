@@ -20,17 +20,20 @@
 
 #include <unistd.h>
 #include <sys/uio.h>
+#include <infiniband/verbs.h>
 
 #include <rte_ethdev.h>
 
 #include "vhost_user.h"
 #include "vhost_rdma.h"
 #include "vhost_rdma_ib.h"
+#include "vhost_rdma_pool.h"
+#include "vhost_rdma_loc.h"
 
-#define CHK_IOVEC(tp, iov, type) \
+#define CHK_IOVEC(tp, iov) \
 	do { \
 		if(iov->iov_len < sizeof(*tp)) { \
-			RDMA_LOG_ERR("%s: " #type " iovec is too small", __func__); \
+			RDMA_LOG_ERR("%s: " #iov " iovec is too small", __func__); \
 			return -1; \
 		} \
 		tp = iov->iov_base; \
@@ -45,13 +48,13 @@ vhost_rdma_query_port(__rte_unused struct vhost_rdma_dev *dev, struct iovec *in,
 	struct cmd_query_port *cmd;
 	struct virtio_rdma_port_attr* rsp;
 
-	CHK_IOVEC(cmd, in, IN);
+	CHK_IOVEC(cmd, in);
 	if (cmd->port != 1) {
 		RDMA_LOG_ERR("port is not 1");
 		return -1;
 	}
 
-	CHK_IOVEC(rsp, out, OUT);
+	CHK_IOVEC(rsp, out);
 
 	rte_memcpy(rsp, &dev->port_attr, sizeof(*rsp));
 
@@ -65,13 +68,13 @@ vhost_rdma_query_pkey(__rte_unused struct vhost_rdma_dev *dev, struct iovec *in,
 	struct cmd_query_pkey *cmd;
 	struct rsp_query_pkey *rsp;
 
-	CHK_IOVEC(cmd, in, IN);
+	CHK_IOVEC(cmd, in);
 	if (cmd->index > 0) {
 		RDMA_LOG_ERR("pkey index is not 0");
 		return -1;
 	}
 
-	CHK_IOVEC(rsp, out, OUT);
+	CHK_IOVEC(rsp, out);
 
 	rsp->pkey = IB_DEFAULT_PKEY_FULL;
 
@@ -85,7 +88,7 @@ vhost_rdma_add_gid(struct vhost_rdma_dev *dev, struct iovec *in,
 	struct cmd_add_gid *cmd;
 	struct vhost_rdma_gid *gid;
 
-	CHK_IOVEC(cmd, in, IN);
+	CHK_IOVEC(cmd, in);
 	if (cmd->index >= VHOST_MAX_GID_TBL_LEN) {
 		RDMA_LOG_ERR("gid index is too big");
 		return -1;
@@ -109,7 +112,7 @@ vhost_rdma_del_gid(struct vhost_rdma_dev *dev, struct iovec *in,
 {
 	struct cmd_del_gid *cmd;
 
-	CHK_IOVEC(cmd, in, IN);
+	CHK_IOVEC(cmd, in);
 	if (cmd->index >= VHOST_MAX_GID_TBL_LEN) {
 		RDMA_LOG_ERR("gid index is too big");
 		return -1;
@@ -122,6 +125,79 @@ vhost_rdma_del_gid(struct vhost_rdma_dev *dev, struct iovec *in,
 	return 0;
 }
 
+static int
+vhost_rdma_create_pd(struct vhost_rdma_dev *dev, struct iovec *in,
+					struct iovec *out)
+{
+	__rte_unused struct cmd_create_pd *cmd;
+	struct rsp_create_pd *rsp;
+	uint32_t idx;
+
+	CHK_IOVEC(cmd, in);
+	CHK_IOVEC(rsp, out);
+
+	if(vhost_rdma_pool_alloc(&dev->pd_pool, &idx) == NULL) {
+		return -1;
+	}
+
+	RDMA_LOG_INFO("create pd %u", idx);
+	rsp->pdn = idx;
+
+	return 0;
+}
+
+static int
+vhost_rdma_destroy_pd(struct vhost_rdma_dev *dev, struct iovec *in,
+					__rte_unused struct iovec *out)
+{
+	struct cmd_destroy_pd *cmd;
+
+	CHK_IOVEC(cmd, in);
+
+	vhost_rdma_pool_free(&dev->pd_pool, cmd->pdn);
+
+	RDMA_LOG_INFO("destroy pd %u", cmd->pdn);
+
+	return 0;
+}
+
+static int
+vhost_rdma_get_dma_mr(struct vhost_rdma_dev *dev, struct iovec *in,
+					struct iovec *out)
+{
+	struct cmd_create_mr *cmd;
+	struct rsp_create_mr *rsp;
+	struct vhost_rdma_pd *pd;
+	struct vhost_rdma_mr *mr;
+	uint32_t mrn;
+
+	CHK_IOVEC(cmd, in);
+	CHK_IOVEC(rsp, out);
+
+	pd = vhost_rdma_pool_get(&dev->pd_pool, cmd->pdn);
+	if (unlikely(pd == NULL)) {
+		RDMA_LOG_ERR("pd is not found");
+		return -1;
+	}
+
+	mr = vhost_rdma_pool_alloc(&dev->mr_pool, &mrn);
+	if (mr == NULL) {
+		RDMA_LOG_ERR("mr alloc failed");
+		return -1;
+	}
+
+	mr->type = VHOST_MR_TYPE_DMA;
+	mr->access = cmd->access_flags;
+	mr->pd = pd;
+	vhost_rdma_mr_init_key(mr, mrn);
+
+	rsp->lkey = mr->lkey;
+	rsp->rkey = mr->rkey;
+	rsp->mrn = mrn;
+
+	return 0;
+}
+
 struct {
     int (*handler)(struct vhost_rdma_dev *dev, struct iovec *in,
 					struct iovec *out);
@@ -130,9 +206,9 @@ struct {
     DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_QUERY_PORT, vhost_rdma_query_port),
     // DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_CREATE_CQ, vu_rdma_create_cq),
     // DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_DESTROY_CQ, vu_rdma_destroy_cq),
-    // DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_CREATE_PD, vu_rdma_create_pd),
-    // DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_DESTROY_PD, vu_rdma_destroy_pd),
-    // DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_GET_DMA_MR, virtio_rdma_get_dma_mr),
+    DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_CREATE_PD, vhost_rdma_create_pd),
+    DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_DESTROY_PD, vhost_rdma_destroy_pd),
+    DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_GET_DMA_MR, vhost_rdma_get_dma_mr),
     // DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_CREATE_MR, virtio_rdma_create_mr),
     // DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_MAP_MR_SG, virtio_rdma_map_mr_sg),
     // DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_REG_USER_MR, vu_rdma_reg_user_mr),
@@ -282,4 +358,15 @@ vhost_rdma_init_ib(struct vhost_rdma_dev *dev) {
 	for (int i = 0; i < VHOST_MAX_GID_TBL_LEN; i++) {
 		dev->gid_tbl[i].type = VHOST_RDMA_GIT_TYPE_ILLIGAL;
 	}
+
+	vhost_rdma_pool_init(&dev->pd_pool, "pd_pool", dev->config.max_pd,
+						sizeof(struct vhost_rdma_pd), false);
+	vhost_rdma_pool_init(&dev->mr_pool, "mr_pool", dev->config.max_mr,
+						sizeof(struct vhost_rdma_mr), false);
+}
+
+void
+vhost_rdma_destroy_ib(struct vhost_rdma_dev *dev) {
+	vhost_rdma_pool_destroy(&dev->mr_pool);
+	vhost_rdma_pool_destroy(&dev->pd_pool);
 }
