@@ -70,6 +70,8 @@ struct vhost_rdma_dev {
 	struct rte_ring* tx_ring;
 	struct rte_ring* rx_ring;
 	struct vhost_queue vqs[NUM_OF_RDMA_QUEUES];
+	struct vhost_queue *cq_vqs;
+	struct vhost_queue *qp_vqs;
 
 	struct rte_intr_handle ctrl_intr_handle;
 	int ctrl_intr_registed;
@@ -82,6 +84,8 @@ struct vhost_rdma_dev {
 
 	struct vhost_rdma_pool pd_pool;
 	struct vhost_rdma_pool mr_pool;
+	struct vhost_rdma_pool cq_pool;
+	struct vhost_rdma_pool qp_pool;
 };
 
 int vhost_rdma_construct(const char *path, uint16_t eth_port_id,

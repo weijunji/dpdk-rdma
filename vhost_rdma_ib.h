@@ -21,6 +21,10 @@
 #ifndef __VHOST_RDMA_IB_H__
 #define __VHOST_RDMA_IB_H__
 
+#include <rte_spinlock.h>
+
+#include "vhost_rdma.h"
+
 struct vhost_rdma_pd {
 	uint32_t pdn;
 };
@@ -55,6 +59,13 @@ struct vhost_rdma_mr {
 	// uint32_t	num_map;
 
 	// struct rxe_map		**map;
+};
+
+struct vhost_rdma_cq {
+	struct vhost_queue *vq;
+	rte_spinlock_t		cq_lock;
+	uint8_t			notify;
+	bool			is_dying;
 };
 
 void vhost_rdma_handle_ctrl(void* arg);
