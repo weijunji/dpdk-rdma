@@ -13,6 +13,7 @@ executable('dpdk-rdma',
     'main.c',
     'vhost_rdma.c',
     'vhost_rdma_ib.c',
+    'vhost_user.c',
   ],
   dependencies: dpdk,
   c_args: [

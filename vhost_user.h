@@ -22,6 +22,7 @@
 #define __VHOST_USER_SPEC_H__
 
 #include <linux/vhost_types.h>
+#include <sys/uio.h>
 
 #include <rte_vhost.h>
 
@@ -144,5 +145,21 @@ vhost_vq_is_avail(struct vhost_queue *vq)
 {
 	return vq->vring.avail->idx != vq->last_avail_idx;
 }
+
+static __rte_always_inline void
+vhost_queue_push(struct vhost_queue *vq, uint16_t idx, uint32_t len)
+{
+	struct vring_used *used = vq->vring.used;
+
+	used->ring[used->idx & (vq->vring.size - 1)].id = idx;
+	used->ring[used->idx & (vq->vring.size - 1)].len = len;
+	rte_smp_mb();
+	used->idx++;
+	rte_smp_mb();
+}
+
+int setup_iovs_from_descs(struct rte_vhost_memory *mem, struct vhost_queue *vq,
+				uint16_t req_idx, struct iovec *iovs, uint16_t num_iovs,
+				uint16_t *num_in, uint16_t* num_out);
 
 #endif

@@ -21,11 +21,7 @@
 #ifndef __VHOST_RDMA_IB_H__
 #define __VHOST_RDMA_IB_H__
 
-#define VHOST_MAX_GID_TBL_LEN 1024
-#define VHOST_PORT_PKEY_TBL_LEN 1
-#define VHOST_PORT_MAX_VL_NUM 1
-
 void vhost_rdma_handle_ctrl(void* arg);
-void vhost_rdma_init_config(struct vhost_rdma_dev *dev);
+void vhost_rdma_init_ib(struct vhost_rdma_dev *dev);
 
 #endif

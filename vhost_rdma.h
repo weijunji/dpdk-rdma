@@ -39,11 +39,23 @@
 #define NUM_OF_RDMA_QUEUES 256
 #define NUM_OF_RDMA_PORT 1
 
+#define VHOST_MAX_GID_TBL_LEN 1024
+#define VHOST_PORT_PKEY_TBL_LEN 1
+#define VHOST_PORT_MAX_VL_NUM 1
+
+#define IB_DEFAULT_PKEY_FULL	0xFFFF
+
 /* VIRTIO_F_EVENT_IDX is NOT supported now */
 #define VHOST_RDMA_FEATURE ((1ULL << VIRTIO_F_VERSION_1) |\
 	(1ULL << VIRTIO_RING_F_INDIRECT_DESC) | \
 	(1ULL << VHOST_USER_F_PROTOCOL_FEATURES))
 // TODO: rdma features
+
+struct vhost_rdma_gid {
+	#define VHOST_RDMA_GIT_TYPE_ILLIGAL -1
+	uint32_t type;
+	uint8_t gid[16];
+};
 
 struct vhost_rdma_dev {
 	uint16_t eth_port_id;
@@ -60,11 +72,23 @@ struct vhost_rdma_dev {
 	int ctrl_intr_registed;
 
 	struct virtio_rdma_config config;
-	struct virtio_rdma_port_attr port_attr[NUM_OF_RDMA_PORT];
+
+	// only one port
+	struct virtio_rdma_port_attr port_attr;
+	struct vhost_rdma_gid gid_tbl[VHOST_MAX_GID_TBL_LEN];
 };
 
 int vhost_rdma_construct(const char *path, uint16_t eth_port_id,
 					struct rte_ring* tx_ring, struct rte_ring* rx_ring);
 void vhost_rdma_destroy(const char* path);
+
+static __rte_always_inline void
+print_gid(struct vhost_rdma_gid *gid) {
+	uint8_t *raw = gid->gid;
+	RDMA_LOG_DEBUG(
+	"%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+	raw[0], raw[1], raw[2], raw[4], raw[5], raw[6], raw[7], raw[8],
+	raw[9], raw[10], raw[11], raw[12], raw[13], raw[14], raw[15], raw[16]);
+}
 
 #endif

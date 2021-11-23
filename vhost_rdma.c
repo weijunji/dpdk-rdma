@@ -211,7 +211,7 @@ vhost_rdma_construct(const char *path, uint16_t eth_port_id,
 	/* set vhost user protocol features */
 	vhost_rdma_install_rte_compat_hooks(path);
 
-	vhost_rdma_init_config(dev);
+	vhost_rdma_init_ib(dev);
 
 	rte_vhost_driver_callback_register(path,
 					   &vhost_rdma_device_ops);
