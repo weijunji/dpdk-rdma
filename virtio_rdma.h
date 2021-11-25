@@ -26,6 +26,8 @@
 
 #include <rte_eal.h>
 
+#include "verbs.h"
+
 struct virtio_rdma_config {
     __le32         phys_port_cnt;
 
@@ -106,8 +108,8 @@ enum {
 
 struct virtio_rdma_port_attr {
 	enum ibv_port_state	state;
-	enum ibv_mtu	 max_mtu;
-	enum ibv_mtu	 active_mtu;
+	enum ib_mtu	 max_mtu;
+	enum ib_mtu	 active_mtu;
 	uint32_t          phys_mtu;
 	int			 gid_tbl_len;
 	unsigned int ip_gids:1;
@@ -163,20 +165,27 @@ struct virtio_rdma_cqe {
 };
 
 struct virtio_rdma_global_route {
-	union ibv_gid		dgid;
+	union ib_gid		dgid;
 	uint32_t		flow_label;
 	uint8_t			sgid_index;
 	uint8_t			hop_limit;
 	uint8_t			traffic_class;
 };
 
+struct roce_ah_attr {
+	uint8_t			dmac[ETH_ALEN];
+};
+
 struct virtio_rdma_ah_attr {
 	struct virtio_rdma_global_route	grh;
-	uint16_t			dlid;
-	uint8_t				sl;
-	uint8_t				src_path_bits;
-	uint8_t				static_rate;
-	uint8_t				port_num;
+	uint8_t		sl;
+	uint8_t		static_rate;
+	uint8_t		port_num;
+	uint8_t		ah_flags;
+	uint8_t		type;
+	union {
+		struct roce_ah_attr roce;
+	};
 };
 
 struct virtio_rdma_qp_cap {
@@ -188,10 +197,10 @@ struct virtio_rdma_qp_cap {
 };
 
 struct virtio_rdma_qp_attr {
-	enum ibv_qp_state	qp_state;
-	enum ibv_qp_state	cur_qp_state;
-	enum ibv_mtu		path_mtu;
-	enum ibv_mig_state	path_mig_state;
+	enum ib_qp_state	qp_state;
+	enum ib_qp_state	cur_qp_state;
+	enum ib_mtu		path_mtu;
+	enum ib_mig_state	path_mig_state;
 	uint32_t			qkey;
 	uint32_t			rq_psn;
 	uint32_t			sq_psn;
@@ -322,6 +331,7 @@ struct rsp_dereg_mr {
 struct cmd_create_qp {
     uint32_t pdn;
     uint8_t qp_type;
+	uint8_t sq_sig_type;
     uint32_t max_send_wr;
     uint32_t max_send_sge;
     uint32_t send_cqn;
@@ -330,6 +340,8 @@ struct cmd_create_qp {
     uint32_t recv_cqn;
     uint8_t is_srq;
     uint32_t srq_handle;
+
+	uint32_t max_inline_data;
 };
 
 struct rsp_create_qp {
@@ -373,10 +385,6 @@ struct rsp_create_uc {
 };
 
 struct cmd_dealloc_uc {
-	uint32_t ctx_handle;
-};
-
-struct rsp_dealloc_uc {
 	uint32_t ctx_handle;
 };
 
@@ -455,6 +463,12 @@ struct cmd_post_recv {
 
 	uint32_t num_sge;
 	uint64_t wr_id;
+};
+
+struct virtio_rdma_sge {
+    __u64 addr;
+    __u32 length;
+    __u32 lkey;
 };
 
 #endif

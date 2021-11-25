@@ -11,11 +11,14 @@ dpdk = dependency('libdpdk')
 executable('dpdk-rdma',
   [
     'main.c',
+    'verbs.c',
     'vhost_user.c',
     'vhost_rdma.c',
     'vhost_rdma_ib.c',
     'vhost_rdma_pool.c',
     'vhost_rdma_mr.c',
+    'vhost_rdma_qp.c',
+    'vhost_rdma_av.c',
   ],
   dependencies: dpdk,
   c_args: [

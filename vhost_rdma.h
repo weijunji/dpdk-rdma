@@ -25,6 +25,7 @@
 #include <rte_vhost.h>
 #include <rte_interrupts.h>
 
+#include "verbs.h"
 #include "virtio_rdma.h"
 #include "vhost_user.h"
 #include "vhost_rdma_pool.h"
@@ -40,13 +41,16 @@
 #define NUM_OF_RDMA_QUEUES 256
 #define NUM_OF_RDMA_PORT 1
 
-#define VHOST_MAX_GID_TBL_LEN 1024
+#define VHOST_MAX_GID_TBL_LEN 512
 #define VHOST_PORT_PKEY_TBL_LEN 1
 #define VHOST_PORT_MAX_VL_NUM 1
 
 #define VHOST_MAX_PD_NUM 0x7ffc
+#define VHOST_MAX_UCONTEXT 512
 
 #define IB_DEFAULT_PKEY_FULL	0xFFFF
+
+#define BTH_PSN_MASK			((1 << 24) - 1)
 
 /* VIRTIO_F_EVENT_IDX is NOT supported now */
 #define VHOST_RDMA_FEATURE ((1ULL << VIRTIO_F_VERSION_1) |\
@@ -57,7 +61,7 @@
 struct vhost_rdma_gid {
 	#define VHOST_RDMA_GIT_TYPE_ILLIGAL -1
 	uint32_t type;
-	uint8_t gid[16];
+	union ib_gid gid;
 };
 
 struct vhost_rdma_dev {
@@ -77,15 +81,18 @@ struct vhost_rdma_dev {
 	int ctrl_intr_registed;
 
 	struct virtio_rdma_config config;
+	uint32_t max_inline_data;
 
 	// only one port
 	struct virtio_rdma_port_attr port_attr;
 	struct vhost_rdma_gid gid_tbl[VHOST_MAX_GID_TBL_LEN];
+	struct vhost_rdma_qp *qp_gsi;
 
 	struct vhost_rdma_pool pd_pool;
 	struct vhost_rdma_pool mr_pool;
 	struct vhost_rdma_pool cq_pool;
 	struct vhost_rdma_pool qp_pool;
+	struct vhost_rdma_pool uc_pool;
 };
 
 int vhost_rdma_construct(const char *path, uint16_t eth_port_id,
@@ -94,7 +101,7 @@ void vhost_rdma_destroy(const char* path);
 
 static __rte_always_inline void
 print_gid(struct vhost_rdma_gid *gid) {
-	uint8_t *raw = gid->gid;
+	uint8_t *raw = gid->gid.raw;
 	RDMA_LOG_DEBUG(
 	"%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
 	raw[0], raw[1], raw[2], raw[4], raw[5], raw[6], raw[7], raw[8],

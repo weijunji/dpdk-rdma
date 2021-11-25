@@ -30,6 +30,7 @@ vhost_rdma_pool_alloc(struct vhost_rdma_pool* pool, uint32_t *idx)
 	int found;
 	uint32_t pos = 0;
 	uint64_t slab = 0;
+	void* obj;
 
 	__rte_bitmap_scan_init(pool->bitmap);
 	found = rte_bitmap_scan(pool->bitmap, &pos, &slab);
@@ -38,7 +39,10 @@ vhost_rdma_pool_alloc(struct vhost_rdma_pool* pool, uint32_t *idx)
 
 		rte_bitmap_clear(pool->bitmap, *idx);
 
-		return (char*)pool->objs + pool->size * *idx;
+		obj = (char*)pool->objs + pool->size * *idx;
+		memset(obj, 0, pool->size);
+
+		return obj;
 	}
 	return NULL;
 }
