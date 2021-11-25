@@ -26,11 +26,10 @@
 
 #include "vhost_rdma_ib.h"
 
-__rte_always_inline int
+__rte_always_inline uint32_t
 roundup_pow_of_two(uint32_t n)
 {
-	int fls = __builtin_clz(n);
-	return n == 32 ? 0 : (1u << (31 - fls));
+	return n < 2 ? n : (1u << (32 - __builtin_clz (n - 1)));
 }
 
 static inline bool ipv6_addr_v4mapped(const struct in6_addr *a)
