@@ -188,8 +188,123 @@ vhost_rdma_get_dma_mr(struct vhost_rdma_dev *dev, struct iovec *in,
 	}
 
 	mr->type = VHOST_MR_TYPE_DMA;
+	mr->state = VHOST_MR_STATE_VALID;
 	mr->access = cmd->access_flags;
 	mr->pd = pd;
+	vhost_rdma_mr_init_key(mr, mrn);
+
+	rsp->lkey = mr->lkey;
+	rsp->rkey = mr->rkey;
+	rsp->mrn = mrn;
+
+	return 0;
+}
+
+static int
+vhost_rdma_create_mr(struct vhost_rdma_dev *dev, struct iovec *in,
+					struct iovec *out)
+{
+	struct cmd_create_mr *cmd;
+	struct rsp_create_mr *rsp;
+	struct vhost_rdma_pd *pd;
+	struct vhost_rdma_mr *mr;
+	uint32_t mrn;
+
+	CHK_IOVEC(cmd, in);
+	CHK_IOVEC(rsp, out);
+
+	pd = vhost_rdma_pool_get(&dev->pd_pool, cmd->pdn);
+	if (unlikely(pd == NULL)) {
+		RDMA_LOG_ERR("pd is not found");
+		return -EINVAL;
+	}
+
+	mr = vhost_rdma_pool_alloc(&dev->mr_pool, &mrn);
+	if (mr == NULL) {
+		RDMA_LOG_ERR("mr alloc failed");
+		return -ENOMEM;
+	}
+
+	mr->page_tbl = vhost_rdma_alloc_page_tbl(cmd->max_num_sg);
+	if (mr->page_tbl == NULL) {
+		return -ENOMEM;
+	}
+
+	mr->type = VHOST_MR_TYPE_DMA;
+	mr->access = cmd->access_flags;
+	mr->pd = pd;
+	mr->max_pages = cmd->max_num_sg;
+	mr->state = VHOST_MR_STATE_FREE;
+	mr->npages = 0;
+	vhost_rdma_mr_init_key(mr, mrn);
+
+	rsp->lkey = mr->lkey;
+	rsp->rkey = mr->rkey;
+	rsp->mrn = mrn;
+
+	return 0;
+}
+
+static int
+vhost_rdma_map_mr_sg(struct vhost_rdma_dev *dev, struct iovec *in,
+					struct iovec *out)
+{
+	struct cmd_map_mr_sg *cmd;
+	struct rsp_map_mr_sg *rsp;
+	struct vhost_rdma_mr *mr;
+	uint32_t npages;
+
+	CHK_IOVEC(cmd, in);
+	CHK_IOVEC(rsp, out);
+
+	mr = vhost_rdma_pool_get(&dev->mr_pool, cmd->mrn);
+
+	npages = RTE_MIN(mr->max_pages, cmd->npages);
+	vhost_rdma_map_pages(dev->mem, mr->page_tbl, cmd->pages, npages);
+
+	mr->va = cmd->start;
+	mr->iova = cmd->start;
+	mr->length = cmd->length;
+	mr->npages = npages;
+
+	rsp->npages = npages;
+
+	return 0;
+}
+
+static int
+vhost_rdma_reg_user_mr(struct vhost_rdma_dev *dev, struct iovec *in,
+					struct iovec *out)
+{
+	struct cmd_reg_user_mr *cmd;
+	struct rsp_reg_user_mr *rsp;
+	struct vhost_rdma_mr *mr;
+	uint32_t mrn;
+
+	CHK_IOVEC(cmd, in);
+	CHK_IOVEC(rsp, out);
+
+	mr = vhost_rdma_pool_alloc(&dev->mr_pool, &mrn);
+
+	mr->page_tbl = vhost_rdma_alloc_page_tbl(cmd->npages);
+	if (mr->page_tbl == NULL) {
+		return -ENOMEM;
+	}
+
+	vhost_rdma_map_pages(dev->mem, mr->page_tbl, cmd->pages, cmd->npages);
+	RDMA_LOG_DEBUG("%s", (char*)mr->page_tbl[0][0]);
+	strcpy((char*)mr->page_tbl[0][0], "REG SUCCESS");
+
+	mr->pd = vhost_rdma_pool_get(&dev->pd_pool, cmd->pdn);
+	mr->access = cmd->access_flags;
+	mr->length = cmd->length;
+	mr->va = cmd->start;
+	mr->iova = cmd->virt_addr;
+	mr->npages = cmd->npages;
+	mr->offset = cmd->start & (TARGET_PAGE_SIZE - 1);
+	mr->type = VHOST_MR_TYPE_MR;
+	mr->state = VHOST_MR_STATE_VALID;
+	mr->max_pages = cmd->npages;
 	vhost_rdma_mr_init_key(mr, mrn);
 
 	rsp->lkey = mr->lkey;
@@ -212,8 +327,10 @@ vhost_rdma_dereg_mr(struct vhost_rdma_dev *dev, struct iovec *in, CTRL_NO_RSP)
 		RDMA_LOG_ERR("mr not found");
 	}
 
+	mr->state = VHOST_MR_STATE_ZOMBIE;
+
 	if (mr->type == VHOST_MR_TYPE_MR) {
-		// TODO: free mr table
+		vhost_rdma_destroy_page_tbl(mr->page_tbl, mr->max_pages);
 	}
 
 	mr->type = VHOST_MR_TYPE_NONE;
@@ -447,9 +564,9 @@ struct {
     DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_CREATE_PD, vhost_rdma_create_pd),
     DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_DESTROY_PD, vhost_rdma_destroy_pd),
     DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_GET_DMA_MR, vhost_rdma_get_dma_mr),
-    // DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_CREATE_MR, virtio_rdma_create_mr),
-    // DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_MAP_MR_SG, virtio_rdma_map_mr_sg),
-    // DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_REG_USER_MR, vu_rdma_reg_user_mr),
+    DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_CREATE_MR, vhost_rdma_create_mr),
+    DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_MAP_MR_SG, vhost_rdma_map_mr_sg),
+    DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_REG_USER_MR, vhost_rdma_reg_user_mr),
     DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_DEREG_MR, vhost_rdma_dereg_mr),
     DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_CREATE_QP, vhost_rdma_create_qp),
     DEFINE_VIRTIO_RDMA_CMD(VIRTIO_CMD_MODIFY_QP, vhost_rdma_modify_qp),

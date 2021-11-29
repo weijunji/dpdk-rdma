@@ -30,6 +30,9 @@
 #include "vhost_user.h"
 #include "vhost_rdma_pool.h"
 
+#define TARGET_PAGE_SIZE 4096
+#define PAGE_MASK	(~(TARGET_PAGE_SIZE-1))
+
 #define RTE_LOGTYPE_RDMA RTE_LOGTYPE_USER2
 
 #define RDMA_LOG_DEBUG(f, ...) RTE_LOG(DEBUG, RDMA, f "\n", ##__VA_ARGS__)

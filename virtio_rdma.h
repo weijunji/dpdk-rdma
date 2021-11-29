@@ -291,8 +291,9 @@ struct rsp_create_mr {
 
 struct cmd_map_mr_sg {
 	uint32_t mrn;
-	uint64_t start;
 	uint32_t npages;
+	uint64_t start;
+	uint64_t length;
 
 	uint64_t pages;
 };

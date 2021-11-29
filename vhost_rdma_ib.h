@@ -42,9 +42,17 @@ enum vhost_rdma_mr_type {
 	VHOST_MR_TYPE_MR,
 };
 
+enum vhost_rdma_mr_state {
+	VHOST_MR_STATE_ZOMBIE,
+	VHOST_MR_STATE_INVALID,
+	VHOST_MR_STATE_FREE,
+	VHOST_MR_STATE_VALID,
+};
+
 struct vhost_rdma_mr {
 	struct vhost_rdma_pd *pd;
 	enum vhost_rdma_mr_type	type;
+	enum vhost_rdma_mr_state	state;
 	uint64_t	va;
 	uint64_t	iova;
 	size_t		length;
@@ -54,10 +62,8 @@ struct vhost_rdma_mr {
 	uint32_t	lkey;
 	uint32_t	rkey;
 
-	// int			page_shift;
-	// int			page_mask;
-	// int			map_shift;
-	// int			map_mask;
+	uint32_t	npages;
+	uint32_t	max_pages;
 
 	// uint32_t	num_buf;
 	// uint32_t	nbuf;
@@ -65,7 +71,7 @@ struct vhost_rdma_mr {
 	// uint32_t	max_buf;
 	// uint32_t	num_map;
 
-	// struct rxe_map		**map;
+	uint64_t** page_tbl;
 };
 
 struct vhost_rdma_cq {

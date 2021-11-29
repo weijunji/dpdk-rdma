@@ -19,6 +19,7 @@
  */
 
 #include <rte_random.h>
+#include <rte_malloc.h>
 
 #include "vhost_rdma.h"
 #include "vhost_rdma_ib.h"
@@ -48,4 +49,57 @@ vhost_rdma_mr_init_key(struct vhost_rdma_mr *mr, uint32_t mrn)
 
 	mr->lkey = lkey;
 	mr->rkey = rkey;
+}
+
+static __rte_always_inline uint32_t
+get_num_l2_pages(uint32_t npages)
+{
+	return npages == 0 ? 0 : (npages - 1) / 512 + 1;
+}
+
+uint64_t**
+vhost_rdma_alloc_page_tbl(uint32_t npages)
+{
+	uint32_t nl2 = get_num_l2_pages(npages);
+	uint32_t i;
+	uint64_t** l1;
+
+	l1 = rte_zmalloc("page_tbl", TARGET_PAGE_SIZE, 4096);
+	for (i = 0; i < nl2; i++) {
+		l1[i] = rte_zmalloc("page_tbl_l2", TARGET_PAGE_SIZE, 4096);
+	}
+
+	return l1;
+}
+
+void
+vhost_rdma_destroy_page_tbl(uint64_t **page_tbl, uint32_t npages)
+{
+	uint32_t nl2 = get_num_l2_pages(npages);
+	uint32_t i;
+
+	for (i = 0; i < nl2; i++) {
+		rte_free(page_tbl[i]);
+	}
+	rte_free(page_tbl);
+}
+
+void
+vhost_rdma_map_pages(struct rte_vhost_memory *mem, uint64_t** page_tbl,
+					uint64_t dma_pages, uint32_t npages)
+{
+	uint32_t nl2 = get_num_l2_pages(npages);
+	uint64_t *l1_addr, *l2_addr;
+	uint64_t len = TARGET_PAGE_SIZE;
+	uint32_t i, j, l2_npages;
+
+	l1_addr = (uint64_t*)gpa_to_vva(mem, dma_pages, &len);
+	for (i = 0; i < nl2; i++) {
+		l2_addr = (uint64_t*)gpa_to_vva(mem, l1_addr[i], &len);
+		l2_npages = npages < 512 ? npages : 512;
+		for (j = 0; j < l2_npages; j++) {
+			page_tbl[i][j] = (uint64_t)gpa_to_vva(mem, l2_addr[j], &len);
+		}
+		npages -= l2_npages;
+	}
 }
