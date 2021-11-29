@@ -49,6 +49,12 @@
 #define MAX_PKTS_BURST 32
 
 static struct rte_eth_conf port_conf_default;
+static struct rte_eth_conf port_conf_offload = {
+	.txmode = {
+		.offloads = DEV_TX_OFFLOAD_IPV4_CKSUM | DEV_TX_OFFLOAD_TCP_CKSUM | DEV_TX_OFFLOAD_UDP_CKSUM,
+	},
+};
+
 static struct rte_mempool *mbuf_pool;
 
 static struct rte_ring* rdma_rx_ring;
@@ -104,6 +110,17 @@ eth_rx() {
 			LOG_DEBUG(" -> : 0x%x %s %s", rte_be_to_cpu_16(eth->ether_type), sbuf, dbuf);
 		}
 		#endif
+
+		// set l4_len to let dpdk tap calculate correct cksum
+		for (int i = 0; i < nb_rx_pkts; i++) {
+			if ((pkts[i]->ol_flags & PKT_TX_L4_MASK) == PKT_TX_TCP_CKSUM) {
+				pkts[i]->l4_len = sizeof(struct rte_tcp_hdr);
+			}
+
+			if ((pkts[i]->ol_flags & PKT_TX_L4_MASK) == PKT_TX_UDP_CKSUM) {
+				pkts[i]->l4_len = sizeof(struct rte_udp_hdr);
+			}
+		}
 
 		nb_tx_pkts = rte_eth_tx_burst(pair_port_id, 0, pkts, nb_rx_pkts);
 		if (unlikely(nb_tx_pkts < nb_rx_pkts)) {
@@ -210,21 +227,21 @@ signal_handler(__rte_unused int signum)
 }
 
 static int
-init_port(uint16_t port_id) {
+init_port(uint16_t port_id, bool offload) {
 	int ret;
 	uint16_t nb_rxd = 1024;
 	uint16_t nb_txd = 1024;
 	struct rte_eth_dev_info dev_info;
 	struct rte_eth_txconf txconf;
 	struct rte_ether_addr addr;
-	struct rte_eth_conf port_conf = port_conf_default;
+	struct rte_eth_conf port_conf = offload ? port_conf_offload: port_conf_default;
 	char buf[RTE_ETHER_ADDR_FMT_SIZE];
 
 	ret = rte_eth_dev_info_get(port_id, &dev_info);
 	if (ret < 0)
 		goto out;
 
-	ret = rte_eth_dev_configure(port_id, 1, 1, &port_conf_default);
+	ret = rte_eth_dev_configure(port_id, 1, 1, &port_conf);
 	if (ret < 0)
 		goto out;
 
@@ -368,14 +385,14 @@ main(int argc, char **argv)
 		if (!vhost_found && strcmp(dev_info.driver_name, "net_vhost") == 0) {
 			vhost_port_id = port_id;
 			vhost_found = true;
-			if (init_port(port_id) != 0) {
+			if (init_port(port_id, false) != 0) {
 				rte_exit(EXIT_FAILURE, "%s\n", rte_strerror(rte_errno));
 			}
 			LOG_INFO("use %s(%d) as vhost dev", dev_info.device->name, port_id);
 		} else if (!pair_found) {
 			pair_port_id = port_id;
 			pair_found = true;
-			if (init_port(port_id) != 0) {
+			if (init_port(port_id, true) != 0) {
 				rte_exit(EXIT_FAILURE, "%s\n", rte_strerror(rte_errno));
 			}
 			LOG_INFO("use %s(%d) as pair dev", dev_info.device->name, port_id);
