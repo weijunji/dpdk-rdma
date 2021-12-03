@@ -29,11 +29,13 @@
 
 #include "verbs.h"
 #include "vhost_rdma.h"
+#include "vhost_rdma_queue.h"
+#include "vhost_rdma_task.h"
 
 #define OPCODE_NONE		(-1)
 
 struct vhost_rdma_pd {
-	uint32_t pdn;
+	struct vhost_rdma_dev *dev;
 };
 
 enum vhost_rdma_mr_type {
@@ -81,21 +83,6 @@ struct vhost_rdma_cq {
 	bool			is_dying;
 };
 
-struct vhost_rdma_sq {
-	int			max_wr;
-	int			max_sge;
-	int			max_inline;
-	rte_spinlock_t		lock; /* guard queue */
-	struct vhost_queue	*queue;
-};
-
-struct vhost_rdma_rq {
-	int			max_wr;
-	int			max_sge;
-	rte_spinlock_t		lock; /* guard queue */
-	struct vhost_queue	*queue;
-};
-
 struct vhost_rdma_av {
 	uint8_t			port_num;
 	/* From RXE_NETWORK_TYPE_* */
@@ -108,114 +95,34 @@ struct vhost_rdma_av {
 	} sgid_addr, dgid_addr;
 };
 
-enum vhost_rdma_qp_state {
-	QP_STATE_RESET,
-	QP_STATE_INIT,
-	QP_STATE_READY,
-	QP_STATE_DRAIN,		/* req only */
-	QP_STATE_DRAINED,	/* req only */
-	QP_STATE_ERROR
-};
-
-struct vhost_rdma_req_info {
-	enum vhost_rdma_qp_state	state;
-	int			wqe_index;
-	uint32_t			psn;
-	int			opcode;
-	rte_atomic32_t		rd_atomic;
-	int			wait_fence;
-	int			need_rd_atomic;
-	int			wait_psn;
-	int			need_retry;
-	int			noack_pkts;
-	// struct rxe_task		task;
-};
-
-struct vhost_rdma_comp_info {
-	uint32_t	psn;
-	int			opcode;
-	int			timeout;
-	int			timeout_retry;
-	int			started_retry;
-	uint32_t	retry_cnt;
-	uint32_t	rnr_retry;
-	// struct rxe_task		task;
-};
-
-enum rdatm_res_state {
-	rdatm_res_state_next,
-	rdatm_res_state_new,
-	rdatm_res_state_replay,
-};
-
-struct resp_res {
-	int			type;
-	int			replay;
-	uint32_t	first_psn;
-	uint32_t	last_psn;
-	uint32_t	cur_psn;
-	enum rdatm_res_state	state;
-
+struct vhost_rdma_dma_info {
+	uint32_t			length;
+	uint32_t			resid;
+	uint32_t			cur_sge;
+	uint32_t			num_sge;
+	uint32_t			sge_offset;
+	uint32_t			reserved;
 	union {
-		//struct {
-			// struct sk_buff	*skb;
-		//} atomic;
-		struct {
-			struct rxe_mr	*mr;
-			uint64_t		va_org;
-			uint32_t		rkey;
-			uint32_t		length;
-			uint64_t		va;
-			uint32_t		resid;
-		} read;
+		uint8_t		*inline_data;
+		struct virtio_rdma_sge	*sge;
+		void	*raw;
 	};
 };
 
-struct vhost_rdma_resp_info {
-	enum vhost_rdma_qp_state	state;
-	uint32_t			msn;
-	uint32_t			psn;
-	uint32_t			ack_psn;
-	int			opcode;
-	int			drop_msg;
-	int			goto_error;
-	int			sent_psn_nak;
-	enum ibv_wc_status	status;
-	uint8_t			aeth_syndrome;
-
-	/* Receive only */
-	struct vhost_rdma_recv_wqe	*wqe;
-
-	/* RDMA read / atomic only */
-	uint64_t			va;
-	uint64_t			offset;
-	struct vhost_rdma_mr		*mr;
-	uint32_t			resid;
-	uint32_t			rkey;
-	uint32_t			length;
-	uint64_t			atomic_orig;
-
-	/* Responder resources. It's a circular list where the oldest
-	 * resource is dropped first.
-	 */
-	struct resp_res		*resources;
-	unsigned int		res_head;
-	unsigned int		res_tail;
-	struct resp_res		*res;
-	// struct rxe_task		task;
+enum wqe_state {
+	wqe_state_posted,
+	wqe_state_processing,
+	wqe_state_pending,
+	wqe_state_done,
+	wqe_state_error,
 };
 
-struct vhost_rdma_dma_info {
-	__u32			length;
-	__u32			resid;
-	__u32			cur_sge;
-	__u32			num_sge;
-	__u32			sge_offset;
-	__u32			reserved;
-	//union {
-	//	__u8		inline_data[0];
-	//	struct virtio_rdma_sge	sge[0];
-	//};
+enum ib_send_flags {
+	IB_SEND_FENCE		= 1,
+	IB_SEND_SIGNALED	= (1<<1),
+	IB_SEND_SOLICITED	= (1<<2),
+	IB_SEND_INLINE		= (1<<3),
+	IB_SEND_IP_CSUM		= (1<<4),
 };
 
 struct vhost_rdma_send_wqe {
@@ -240,7 +147,120 @@ struct vhost_rdma_recv_wqe {
 	struct vhost_rdma_dma_info	dma;
 };
 
+struct vhost_rdma_sq {
+	int			max_wr;
+	int			max_sge;
+	int			max_inline;
+	rte_spinlock_t		lock; /* guard queue */
+	struct vhost_rdma_queue queue;
+};
+
+struct vhost_rdma_rq {
+	int			max_wr;
+	int			max_sge;
+	rte_spinlock_t		lock; /* guard queue */
+	struct vhost_rdma_queue queue;
+};
+
+enum vhost_rdma_qp_state {
+	QP_STATE_RESET,
+	QP_STATE_INIT,
+	QP_STATE_READY,
+	QP_STATE_DRAIN,		/* req only */
+	QP_STATE_DRAINED,	/* req only */
+	QP_STATE_ERROR
+};
+
+struct vhost_rdma_req_info {
+	enum vhost_rdma_qp_state	state;
+	int			wqe_index;
+	uint32_t			psn;
+	int			opcode;
+	rte_atomic32_t		rd_atomic;
+	int			wait_fence;
+	int			need_rd_atomic;
+	int			wait_psn;
+	int			need_retry;
+	int			noack_pkts;
+	struct vhost_rdma_task	task;
+};
+
+struct vhost_rdma_comp_info {
+	uint32_t	psn;
+	int			opcode;
+	int			timeout;
+	int			timeout_retry;
+	int			started_retry;
+	uint32_t	retry_cnt;
+	uint32_t	rnr_retry;
+	struct vhost_rdma_task	task;
+};
+
+enum rdatm_res_state {
+	rdatm_res_state_next,
+	rdatm_res_state_new,
+	rdatm_res_state_replay,
+};
+
+struct resp_res {
+	int			type;
+	int			replay;
+	uint32_t	first_psn;
+	uint32_t	last_psn;
+	uint32_t	cur_psn;
+	enum rdatm_res_state	state;
+
+	union {
+		struct {
+			struct rte_mbuf *mbuf;
+		} atomic;
+		struct {
+			struct vhost_rdma_mr	*mr;
+			uint64_t		va_org;
+			uint32_t		rkey;
+			uint32_t		length;
+			uint64_t		va;
+			uint32_t		resid;
+		} read;
+	};
+};
+
+struct vhost_rdma_resp_info {
+	enum vhost_rdma_qp_state	state;
+	uint32_t			msn;
+	uint32_t			psn;
+	uint32_t			ack_psn;
+	int			opcode;
+	int			drop_msg;
+	int			goto_error;
+	int			sent_psn_nak;
+	enum ib_wc_status	status;
+	uint8_t			aeth_syndrome;
+
+	/* Receive only */
+	struct vhost_rdma_recv_wqe	*wqe;
+
+	/* RDMA read / atomic only */
+	uint64_t			va;
+	uint64_t			offset;
+	struct vhost_rdma_mr		*mr;
+	uint32_t			resid;
+	uint32_t			rkey;
+	uint32_t			length;
+	uint64_t			atomic_orig;
+
+	/* Responder resources. It's a circular list where the oldest
+	 * resource is dropped first.
+	 */
+	struct resp_res		*resources;
+	unsigned int		res_head;
+	unsigned int		res_tail;
+	struct resp_res		*res;
+	struct vhost_rdma_task	task;
+};
+
 struct vhost_rdma_qp {
+	struct vhost_rdma_dev *dev;
 	struct virtio_rdma_qp_attr	attr;
 	uint32_t 			qpn;
 	enum ib_qp_type		type;
@@ -263,16 +283,18 @@ struct vhost_rdma_qp {
 	struct vhost_rdma_av		pri_av;
 	struct vhost_rdma_av		alt_av;
 
-	// struct sk_buff_head	req_pkts; // NO NEED: recv pkt with request
-	// struct sk_buff_head	resp_pkts; // NO NEED: recv ptk with response
+	struct rte_ring	*req_pkts;
+	struct rte_mbuf *req_pkts_head; // use this to support peek
+	struct rte_ring *resp_pkts;
+	struct rte_mbuf *resp_pkts_head; // use this to support peek
 
 	struct vhost_rdma_req_info	req;
 	struct vhost_rdma_comp_info	comp;
 	struct vhost_rdma_resp_info	resp;
 
 	rte_atomic32_t		ssn;
-	rte_atomic32_t		skb_out;
-	int			need_req_skb;
+	rte_atomic32_t		mbuf_out;
+	int			need_req_mbuf;
 
 	/* Timer for retranmitting packet when ACKs have been lost. RC
 	 * only. The requester sets it when it is not already
@@ -280,7 +302,7 @@ struct vhost_rdma_qp {
 	 * received.
 	 */
 	struct rte_timer retrans_timer;
-	uint64_t qp_timeout_jiffies;
+	uint64_t qp_timeout_ticks;
 
 	/* Timer for handling RNR NAKS. */
 	struct rte_timer rnr_nak_timer;
@@ -309,6 +331,10 @@ static inline int ib_mtu_enum_to_int(enum ib_mtu mtu)
 enum {
 	VHOST_NETWORK_TYPE_IPV4 = 1,
 	VHOST_NETWORK_TYPE_IPV6 = 2,
+};
+
+enum {
+	IB_MULTICAST_QPN = 0xffffff
 };
 
 void vhost_rdma_handle_ctrl(void* arg);

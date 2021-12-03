@@ -33,6 +33,7 @@
 #include <rte_ring.h>
 
 #include "vhost_rdma.h"
+#include "vhost_rdma_hdr.h"
 
 #define RTE_LOGTYPE_ETHER RTE_LOGTYPE_USER1
 
@@ -63,6 +64,8 @@ static struct rte_ring* rdma_tx_ring;
 static char dev_pathname[PATH_MAX] = "/tmp/vhost-rdma0";
 
 uint16_t vhost_port_id, pair_port_id;
+
+volatile bool force_quit;
 
 struct udpv4_hdr {
 	struct rte_ether_hdr ether;
@@ -209,11 +212,12 @@ eth_tx() {
 static int
 eth_main_loop(__rte_unused void* arg) {
 	LOG_INFO("ethernet main loop started");
-	while (1) {
+	while (!force_quit) {
 		eth_rx();
 
 		eth_tx();
 	}
+	LOG_INFO("ethernet main loop quit");
 	return 0;
 }
 
@@ -221,6 +225,7 @@ static __rte_noreturn void
 signal_handler(__rte_unused int signum)
 {
 	// close dev to destroy vhost sock file
+	force_quit = true;
     vhost_rdma_destroy(dev_pathname);
 	rte_eth_dev_close(vhost_port_id);
 	rte_exit(0, "Exiting on signal_handler\n");
@@ -343,13 +348,11 @@ main(int argc, char **argv)
 		rte_exit(EXIT_FAILURE, "failed to parse args\n");
 	}
 
-	if (rte_lcore_count() < 4) {
+	if (rte_lcore_count() < 2) {
 		rte_exit(EXIT_FAILURE,
-		"Not enough cores, expecting at least 4\n"
-		"\tcore 0: ethernet packages forwarding\n"
-		"\tcore 1: rdma ctrl thread\n"
-		"\tcore 2: rdma tx thread\n"
-		"\tcore 3: rdma rx thread\n"
+		"Not enough cores, expecting at least 2\n"
+		"\tcore 0:   ethernet packages forwarding\n"
+		"\tcore 1-n: rdma ctrl thread\n"
 		);
 	}
 
@@ -362,19 +365,19 @@ main(int argc, char **argv)
 	}
 
 	/* init mempool */
-	mbuf_pool = rte_pktmbuf_pool_create("ethdev_mbuf_pool", 65535,
-			250, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
+	mbuf_pool = rte_pktmbuf_pool_create("mbuf_pool", 65535,
+			250, sizeof(struct vhost_rdma_pkt_info), RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
 	if (mbuf_pool == NULL)
 		rte_exit(EXIT_FAILURE, "%s\n", rte_strerror(rte_errno));
 
 	/* init rdma tx/rx ring */
 	rdma_rx_ring = rte_ring_create("rdma_rx_ring", 1024, rte_socket_id(),
-									RING_F_SP_ENQ | RING_F_SC_DEQ);
+									RING_F_SP_ENQ | RING_F_MC_HTS_DEQ);
 	if (rdma_rx_ring == NULL)
 		rte_exit(EXIT_FAILURE, "%s\n", rte_strerror(rte_errno));
 
 	rdma_tx_ring = rte_ring_create("rdma_tx_ring", 1024, rte_socket_id(),
-									RING_F_SP_ENQ | RING_F_SC_DEQ);
+									RING_F_MP_HTS_ENQ | RING_F_SC_DEQ);
 	if (rdma_tx_ring == NULL)
 		rte_exit(EXIT_FAILURE, "%s\n", rte_strerror(rte_errno));
 
@@ -400,7 +403,7 @@ main(int argc, char **argv)
 	}
 
 	/* init vhost rdma */
-	vhost_rdma_construct(dev_pathname, pair_port_id, rdma_tx_ring, rdma_rx_ring);
+	vhost_rdma_construct(dev_pathname, pair_port_id, mbuf_pool, rdma_tx_ring, rdma_rx_ring);
 
 	rte_vhost_driver_start(dev_pathname);
 

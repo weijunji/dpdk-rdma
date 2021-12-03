@@ -26,6 +26,7 @@
 #include "vhost_rdma.h"
 #include "vhost_rdma_ib.h"
 #include "vhost_rdma_loc.h"
+#include "vhost_rdma_hdr.h"
 
 static int vhost_rdma_qp_init_req(__rte_unused struct vhost_rdma_dev *dev,
 							struct vhost_rdma_qp *qp, struct cmd_create_qp *cmd)
@@ -40,18 +41,33 @@ static int vhost_rdma_qp_init_req(__rte_unused struct vhost_rdma_dev *dev,
 			 cmd->max_inline_data);
 	qp->sq.max_sge = wqe_size / sizeof(struct virtio_rdma_sge);
 	qp->sq.max_inline = wqe_size;
-	qp->sq.queue = &dev->qp_vqs[qp->qpn * 2];
+	vhost_rdma_queue_init(qp, &qp->sq.queue, "sq_queue",
+			&dev->qp_vqs[qp->qpn * 2], sizeof(struct vhost_rdma_send_wqe) + wqe_size, VHOST_RDMA_QUEUE_SQ);
 
 	qp->req.state		= QP_STATE_RESET;
 	qp->req.opcode		= -1;
 	qp->comp.opcode		= -1;
 
-	//rxe_init_task(rxe, &qp->req.task, qp,
-	//	      rxe_requester, "req");
-	//rxe_init_task(rxe, &qp->comp.task, qp,
-	//	      rxe_completer, "comp");
+	qp->req_pkts = rte_zmalloc(NULL, rte_ring_get_memsize(512), RTE_CACHE_LINE_SIZE);
+	if (qp->req_pkts == NULL) {
+		RDMA_LOG_ERR("req_pkts malloc failed");
+		return -ENOMEM;
+	}
+	if (rte_ring_init(qp->req_pkts, "req_pkts", 512, RING_F_MP_HTS_ENQ | RING_F_MC_HTS_DEQ) != 0) {
+		RDMA_LOG_ERR("req_pkts init failed");
+		rte_free(qp->req_pkts);
+		return -ENOMEM;
+	}
+	// qp->req_pkts = rte_ring_create("req_pkts", 512, rte_socket_id(), RING_F_MP_HTS_ENQ | RING_F_MC_HTS_DEQ);
+	RDMA_LOG_DEBUG("req pkts qp%p %p", qp, qp->req_pkts);
+	qp->req_pkts_head = NULL;
 
-	qp->qp_timeout_jiffies = 0; /* Can't be set for UD/UC in modify_qp */
+	vhost_rdma_init_task(&qp->req.task, dev->task_ring, qp,
+			vhost_rdma_requester, "req");
+	vhost_rdma_init_task(&qp->comp.task, dev->task_ring, qp,
+			vhost_rdma_completer, "comp");
+
+	qp->qp_timeout_ticks = 0; /* Can't be set for UD/UC in modify_qp */
 	if (cmd->qp_type == IB_QPT_RC) {
 		rte_timer_init(&qp->rnr_nak_timer); // req_task
 		rte_timer_init(&qp->retrans_timer); // comp_task
@@ -66,12 +82,24 @@ static int vhost_rdma_qp_init_resp(struct vhost_rdma_dev *dev,
 		qp->rq.max_wr		= cmd->max_recv_wr;
 		qp->rq.max_sge		= cmd->max_recv_sge;
 
-		qp->rq.queue = &dev->qp_vqs[qp->qpn * 2 + 1];
+		vhost_rdma_queue_init(qp, &qp->rq.queue, "rq_queue",
+			&dev->qp_vqs[qp->qpn * 2 + 1], sizeof(struct vhost_rdma_recv_wqe), VHOST_RDMA_QUEUE_RQ);
 	}
-	// skb_queue_head_init(&qp->resp_pkts);
 
-	//rxe_init_task(rxe, &qp->resp.task, qp,
-	//		rxe_responder, "resp");
+	qp->resp_pkts = rte_zmalloc(NULL, rte_ring_get_memsize(512), RTE_CACHE_LINE_SIZE);
+	if (qp->resp_pkts == NULL) {
+		RDMA_LOG_ERR("resp_pkts malloc failed");
+		return -ENOMEM;
+	}
+	if (rte_ring_init(qp->resp_pkts, "resp_pkts", 512, RING_F_MP_HTS_ENQ | RING_F_MC_HTS_DEQ) != 0) {
+		RDMA_LOG_ERR("resp_pkts init failed");
+		rte_free(qp->resp_pkts);
+		return -ENOMEM;
+	}
+	qp->resp_pkts_head = NULL;
+
+	vhost_rdma_init_task(&qp->resp.task, dev->task_ring, qp,
+			vhost_rdma_responder, "resp");
 
 	qp->resp.opcode		= OPCODE_NONE;
 	qp->resp.msn		= 0;
@@ -87,12 +115,10 @@ static void vhost_rdma_qp_init_misc(__rte_unused struct vhost_rdma_dev *dev,
 	qp->attr.path_mtu	= 1;
 	qp->mtu			= ib_mtu_enum_to_int(qp->attr.path_mtu);
 
-	// skb_queue_head_init(&qp->send_pkts);
-
 	rte_spinlock_init(&qp->state_lock);
 
 	rte_atomic32_set(&qp->ssn, 0);
-	rte_atomic32_set(&qp->skb_out, 0);
+	rte_atomic32_set(&qp->mbuf_out, 0);
 }
 
 int vhost_rdma_qp_init(struct vhost_rdma_dev *dev, struct vhost_rdma_qp *qp,
@@ -117,6 +143,7 @@ int vhost_rdma_qp_init(struct vhost_rdma_dev *dev, struct vhost_rdma_qp *qp,
 	qp->attr.qp_state = IB_QPS_RESET;
 	qp->valid = 1;
 	qp->type = cmd->qp_type;
+	qp->dev = dev;
 
 	return 0;
 
@@ -131,23 +158,26 @@ err:
 void vhost_rdma_qp_destroy(struct vhost_rdma_qp *qp)
 {
 	qp->valid = 0;
-	qp->qp_timeout_jiffies = 0;
-	//rxe_cleanup_task(&qp->resp.task);
+	qp->qp_timeout_ticks = 0;
+	vhost_rdma_cleanup_task(&qp->resp.task);
 
 	if (qp->type == IB_QPT_RC) {
 		rte_timer_stop_sync(&qp->retrans_timer);
 		rte_timer_stop_sync(&qp->rnr_nak_timer);
 	}
 
-	//rxe_cleanup_task(&qp->req.task);
-	//rxe_cleanup_task(&qp->comp.task);
+	vhost_rdma_cleanup_task(&qp->req.task);
+	vhost_rdma_cleanup_task(&qp->comp.task);
 
 	/* flush out any receive wr's or pending requests */
-	//__rxe_do_task(&qp->req.task);
-	//if (qp->sq.queue) {
-	//	__rxe_do_task(&qp->comp.task);
-	//	__rxe_do_task(&qp->req.task);
-	//}
+	__vhost_rdma_do_task(&qp->req.task);
+	if (qp->sq.queue.vq) {
+		__vhost_rdma_do_task(&qp->comp.task);
+		__vhost_rdma_do_task(&qp->req.task);
+	}
+
+	rte_free(qp->req_pkts);
+	rte_free(qp->resp_pkts);
 }
 
 int vhost_rdma_qp_to_attr(struct vhost_rdma_qp *qp,
@@ -406,13 +436,11 @@ vhost_rdma_qp_from_attr(struct vhost_rdma_dev *dev, struct vhost_rdma_qp *qp,
 	if (mask & IB_QP_TIMEOUT) {
 		qp->attr.timeout = attr->timeout;
 		if (attr->timeout == 0) {
-			qp->qp_timeout_jiffies = 0;
+			qp->qp_timeout_ticks = 0;
 		} else {
-			/* According to the spec, timeout = 4.096 * 2 ^ attr->timeout [us] */
-			// FIXME: timeout
-			//int j = nsecs_to_jiffies(4096ULL << attr->timeout);
-
-			//qp->qp_timeout_jiffies = j ? j : 1;
+			uint64_t ticks_per_us = rte_get_timer_hz() / 1000000;
+			uint64_t j = (4096ULL << attr->timeout) / 1000 * ticks_per_us;
+			qp->qp_timeout_ticks = j ? j : 1;
 		}
 	}
 

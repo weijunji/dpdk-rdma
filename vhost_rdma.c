@@ -26,6 +26,7 @@
 #include "vhost_user.h"
 #include "vhost_rdma.h"
 #include "vhost_rdma_ib.h"
+#include "vhost_rdma_loc.h"
 
 struct vhost_rdma_dev g_vhost_rdma_dev;
 
@@ -183,6 +184,9 @@ vhost_rdma_destroy(const char* path)
 	struct vhost_rdma_dev *dev;
 
 	dev = &g_vhost_rdma_dev;
+	if (dev->task_ring)
+		rte_ring_free(dev->task_ring);
+	dev->task_ring = NULL;
 	rte_intr_callback_unregister(&dev->ctrl_intr_handle,
 								vhost_rdma_handle_ctrl, dev);
 	rte_vhost_driver_unregister(path);
@@ -190,7 +194,8 @@ vhost_rdma_destroy(const char* path)
 
 int
 vhost_rdma_construct(const char *path, uint16_t eth_port_id,
-					struct rte_ring* tx_ring, struct rte_ring* rx_ring) {
+			struct rte_mempool *mbuf_pool, struct rte_ring* tx_ring,
+			struct rte_ring* rx_ring) {
 	struct vhost_rdma_dev *dev = &g_vhost_rdma_dev;
 	int ret;
 
@@ -214,13 +219,25 @@ vhost_rdma_construct(const char *path, uint16_t eth_port_id,
 	vhost_rdma_install_rte_compat_hooks(path);
 
 	vhost_rdma_init_ib(dev);
+	rte_spinlock_init(&dev->port_lock);
 
 	rte_vhost_driver_callback_register(path,
 					   &vhost_rdma_device_ops);
 
-	g_vhost_rdma_dev.eth_port_id = eth_port_id;
-	g_vhost_rdma_dev.tx_ring = tx_ring;
-	g_vhost_rdma_dev.rx_ring = rx_ring;
+	dev->eth_port_id = eth_port_id;
+	dev->mbuf_pool = mbuf_pool;
+	dev->tx_ring = tx_ring;
+	dev->rx_ring = rx_ring;
+
+	dev->task_ring = rte_ring_create("rdma_task_ring",
+			roundup_pow_of_two(dev->config.max_qp * 3),
+			rte_socket_id(), RING_F_MP_HTS_ENQ | RING_F_MC_HTS_DEQ);
+
+	for (int i = 0; i < VHOST_NUM_OF_COUNTERS; i++) {
+		rte_atomic64_init(&dev->stats_counters[i]);
+	}
+
+	rte_eal_mp_remote_launch(vhost_rdma_scheduler, dev, SKIP_MAIN);
 
 	return 0;
 }

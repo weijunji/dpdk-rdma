@@ -143,18 +143,23 @@ enum virtio_rdma_wr_opcode {
 	VIRTIO_RDMA_WR_BIND_MW,
 	VIRTIO_RDMA_WR_SEND_WITH_INV,
 	VIRTIO_RDMA_WR_TSO,
-	VIRTIO_RDMA_WR_DRIVER1,
+	VIRTIO_RDMA_WR_RDMA_READ_WITH_INV,
+	VIRTIO_RDMA_WR_MASKED_ATOMIC_CMP_AND_SWP,
+	VIRTIO_RDMA_WR_MASKED_ATOMIC_FETCH_AND_ADD,
 
 	VIRTIO_RDMA_WR_REG_MR = 0x20,
 };
 
 struct virtio_rdma_cqe {
 	uint64_t		wr_id;
-	enum ibv_wc_status status;
-	enum ibv_wc_opcode opcode;
+	enum ib_wc_status status;
+	enum ib_wc_opcode opcode;
 	uint32_t vendor_err;
 	uint32_t byte_len;
-	uint32_t imm_data;
+	union {
+		uint32_t imm_data;
+		uint32_t invalidate_rkey;
+	}ex;
 	uint32_t qp_num;
 	uint32_t src_qp;
 	int	 wc_flags;
@@ -162,10 +167,11 @@ struct virtio_rdma_cqe {
 	uint16_t slid;
 	uint8_t sl;
 	uint8_t dlid_path_bits;
+	uint8_t port_num;
 };
 
 struct virtio_rdma_global_route {
-	union ib_gid		dgid;
+	union ib_gid	dgid;
 	uint32_t		flow_label;
 	uint8_t			sgid_index;
 	uint8_t			hop_limit;
@@ -173,7 +179,7 @@ struct virtio_rdma_global_route {
 };
 
 struct roce_ah_attr {
-	uint8_t			dmac[ETH_ALEN];
+	uint8_t			dmac[6];
 };
 
 struct virtio_rdma_ah_attr {

@@ -23,6 +23,8 @@
 
 #include <infiniband/verbs.h>
 
+#include <rte_byteorder.h>
+
 enum ib_sig_type {
 	IB_SIGNAL_ALL_WR,
 	IB_SIGNAL_REQ_WR
@@ -108,8 +110,8 @@ enum ib_gid_type {
 union ib_gid {
 	uint8_t	raw[16];
 	struct {
-		__be64	subnet_prefix;
-		__be64	interface_id;
+		rte_be64_t	subnet_prefix;
+		rte_be64_t	interface_id;
 	} global;
 };
 
@@ -119,5 +121,83 @@ enum ib_ah_flags {
 
 bool ib_modify_qp_is_ok(enum ib_qp_state cur_state, enum ib_qp_state next_state,
 			enum ib_qp_type type, enum ib_qp_attr_mask mask);
+
+enum ib_access_flags {
+	IB_ACCESS_LOCAL_WRITE = IB_UVERBS_ACCESS_LOCAL_WRITE,
+	IB_ACCESS_REMOTE_WRITE = IB_UVERBS_ACCESS_REMOTE_WRITE,
+	IB_ACCESS_REMOTE_READ = IB_UVERBS_ACCESS_REMOTE_READ,
+	IB_ACCESS_REMOTE_ATOMIC = IB_UVERBS_ACCESS_REMOTE_ATOMIC,
+	IB_ACCESS_MW_BIND = IB_UVERBS_ACCESS_MW_BIND,
+	IB_ZERO_BASED = IB_UVERBS_ACCESS_ZERO_BASED,
+	IB_ACCESS_ON_DEMAND = IB_UVERBS_ACCESS_ON_DEMAND,
+	IB_ACCESS_HUGETLB = IB_UVERBS_ACCESS_HUGETLB,
+	IB_ACCESS_RELAXED_ORDERING = IB_UVERBS_ACCESS_RELAXED_ORDERING,
+
+	IB_ACCESS_OPTIONAL = IB_UVERBS_ACCESS_OPTIONAL_RANGE,
+	IB_ACCESS_SUPPORTED =
+		((IB_ACCESS_HUGETLB << 1) - 1) | IB_ACCESS_OPTIONAL,
+};
+
+enum ib_wc_status {
+	IB_WC_SUCCESS,
+	IB_WC_LOC_LEN_ERR,
+	IB_WC_LOC_QP_OP_ERR,
+	IB_WC_LOC_EEC_OP_ERR,
+	IB_WC_LOC_PROT_ERR,
+	IB_WC_WR_FLUSH_ERR,
+	IB_WC_MW_BIND_ERR,
+	IB_WC_BAD_RESP_ERR,
+	IB_WC_LOC_ACCESS_ERR,
+	IB_WC_REM_INV_REQ_ERR,
+	IB_WC_REM_ACCESS_ERR,
+	IB_WC_REM_OP_ERR,
+	IB_WC_RETRY_EXC_ERR,
+	IB_WC_RNR_RETRY_EXC_ERR,
+	IB_WC_LOC_RDD_VIOL_ERR,
+	IB_WC_REM_INV_RD_REQ_ERR,
+	IB_WC_REM_ABORT_ERR,
+	IB_WC_INV_EECN_ERR,
+	IB_WC_INV_EEC_STATE_ERR,
+	IB_WC_FATAL_ERR,
+	IB_WC_RESP_TIMEOUT_ERR,
+	IB_WC_GENERAL_ERR
+};
+
+enum ib_wc_opcode {
+	IB_WC_SEND = IBV_WC_SEND,
+	IB_WC_RDMA_WRITE = IBV_WC_RDMA_WRITE,
+	IB_WC_RDMA_READ = IBV_WC_RDMA_READ,
+	IB_WC_COMP_SWAP = IBV_WC_COMP_SWAP,
+	IB_WC_FETCH_ADD = IBV_WC_FETCH_ADD,
+	IB_WC_BIND_MW = IBV_WC_BIND_MW,
+	IB_WC_LOCAL_INV = IBV_WC_LOCAL_INV,
+	IB_WC_LSO = IBV_WC_TSO,
+	IB_WC_REG_MR,
+	IB_WC_MASKED_COMP_SWAP,
+	IB_WC_MASKED_FETCH_ADD,
+/*
+ * Set value of IB_WC_RECV so consumers can test if a completion is a
+ * receive by testing (opcode & IB_WC_RECV).
+ */
+	IB_WC_RECV			= 1 << 7,
+	IB_WC_RECV_RDMA_WITH_IMM
+};
+
+enum ib_wc_flags {
+	IB_WC_GRH		= 1,
+	IB_WC_WITH_IMM		= (1<<1),
+	IB_WC_WITH_INVALIDATE	= (1<<2),
+	IB_WC_IP_CSUM_OK	= (1<<3),
+	IB_WC_WITH_SMAC		= (1<<4),
+	IB_WC_WITH_VLAN		= (1<<5),
+	IB_WC_WITH_NETWORK_HDR_TYPE	= (1<<6),
+};
+
+enum ib_cq_notify_flags {
+	IB_CQ_SOLICITED			= 1 << 0,
+	IB_CQ_NEXT_COMP			= 1 << 1,
+	IB_CQ_SOLICITED_MASK		= IB_CQ_SOLICITED | IB_CQ_NEXT_COMP,
+	IB_CQ_REPORT_MISSED_EVENTS	= 1 << 2,
+};
 
 #endif

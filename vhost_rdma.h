@@ -39,6 +39,22 @@
 #define RDMA_LOG_INFO(f, ...) RTE_LOG(INFO, RDMA, f "\n", ##__VA_ARGS__)
 #define RDMA_LOG_ERR(f, ...) RTE_LOG(ERR, RDMA, f "\n", ##__VA_ARGS__)
 
+#ifdef DEBUG_RDMA_DP
+#define RDMA_LOG_DEBUG_DP(f, ...) RTE_LOG(DEBUG, RDMA, "[%u] " f "\n", \
+										rte_lcore_id(), ##__VA_ARGS__)
+#define RDMA_LOG_INFO_DP(f, ...) RTE_LOG(INFO, RDMA, "[%u] " f "\n", \
+										rte_lcore_id(), ##__VA_ARGS__)
+#define RDMA_LOG_ERR_DP(f, ...) RTE_LOG(ERR, RDMA, "[%u] " f "\n", \
+										rte_lcore_id(), ##__VA_ARGS__)
+#else
+#define RDMA_LOG_DEBUG_DP(f, ...) RTE_LOG_DP(DEBUG, RDMA, "[%u] " f "\n", \
+										rte_lcore_id(), ##__VA_ARGS__)
+#define RDMA_LOG_INFO_DP(f, ...) RTE_LOG_DP(INFO, RDMA, "[%u] " f "\n", \
+										rte_lcore_id(), ##__VA_ARGS__)
+#define RDMA_LOG_ERR_DP(f, ...) RTE_LOG_DP(ERR, RDMA, "[%u] " f "\n", \
+										rte_lcore_id(), ##__VA_ARGS__)
+#endif
+
 #define ROCE_V2_UDP_DPORT 4791
 
 #define NUM_OF_RDMA_QUEUES 256
@@ -53,8 +69,6 @@
 
 #define IB_DEFAULT_PKEY_FULL	0xFFFF
 
-#define BTH_PSN_MASK			((1 << 24) - 1)
-
 /* VIRTIO_F_EVENT_IDX is NOT supported now */
 #define VHOST_RDMA_FEATURE ((1ULL << VIRTIO_F_VERSION_1) |\
 	(1ULL << VIRTIO_RING_F_INDIRECT_DESC) | \
@@ -62,23 +76,46 @@
 // TODO: rdma features
 
 struct vhost_rdma_gid {
-	#define VHOST_RDMA_GIT_TYPE_ILLIGAL -1
+	#define VHOST_RDMA_GID_TYPE_ILLIGAL -1
 	uint32_t type;
 	union ib_gid gid;
+};
+
+enum vhost_rdma_counters {
+	VHOST_CNT_SENT_PKTS,
+	VHOST_CNT_RCVD_PKTS,
+	VHOST_CNT_DUP_REQ,
+	VHOST_CNT_OUT_OF_SEQ_REQ,
+	VHOST_CNT_RCV_RNR,
+	VHOST_CNT_SND_RNR,
+	VHOST_CNT_RCV_SEQ_ERR,
+	VHOST_CNT_COMPLETER_SCHED,
+	VHOST_CNT_RETRY_EXCEEDED,
+	VHOST_CNT_RNR_RETRY_EXCEEDED,
+	VHOST_CNT_COMP_RETRY,
+	VHOST_CNT_SEND_ERR,
+	VHOST_CNT_LINK_DOWNED,
+	VHOST_CNT_RDMA_SEND,
+	VHOST_CNT_RDMA_RECV,
+	VHOST_NUM_OF_COUNTERS
 };
 
 struct vhost_rdma_dev {
 	uint16_t eth_port_id;
 	int vid;
 	int started;
+	bool stoped;
 
 	struct rte_vhost_memory *mem;
 
+	struct rte_mempool *mbuf_pool;
 	struct rte_ring* tx_ring;
 	struct rte_ring* rx_ring;
 	struct vhost_queue vqs[NUM_OF_RDMA_QUEUES];
 	struct vhost_queue *cq_vqs;
 	struct vhost_queue *qp_vqs;
+
+	struct rte_ring* task_ring;
 
 	struct rte_intr_handle ctrl_intr_handle;
 	int ctrl_intr_registed;
@@ -88,6 +125,7 @@ struct vhost_rdma_dev {
 
 	// only one port
 	struct virtio_rdma_port_attr port_attr;
+	rte_spinlock_t port_lock;
 	struct vhost_rdma_gid gid_tbl[VHOST_MAX_GID_TBL_LEN];
 	struct vhost_rdma_qp *qp_gsi;
 
@@ -96,10 +134,20 @@ struct vhost_rdma_dev {
 	struct vhost_rdma_pool cq_pool;
 	struct vhost_rdma_pool qp_pool;
 	struct vhost_rdma_pool uc_pool;
+
+	rte_atomic64_t stats_counters[VHOST_NUM_OF_COUNTERS];
 };
 
+static __rte_always_inline void
+vhost_rdma_counter_inc(struct vhost_rdma_dev *dev,
+						enum vhost_rdma_counters index)
+{
+	rte_atomic64_inc(&dev->stats_counters[index]);
+}
+
 int vhost_rdma_construct(const char *path, uint16_t eth_port_id,
-					struct rte_ring* tx_ring, struct rte_ring* rx_ring);
+				struct rte_mempool *mbuf_pool, struct rte_ring* tx_ring,
+				struct rte_ring* rx_ring);
 void vhost_rdma_destroy(const char* path);
 
 static __rte_always_inline void

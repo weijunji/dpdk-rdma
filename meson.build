@@ -1,8 +1,8 @@
 project('dpdk-rdma', 'c',
   version : '0.1',
   default_options : [
-    'warning_level=3',
-    'werror=True'
+    'warning_level=2',
+    'werror=True',
   ]
 )
 
@@ -19,11 +19,21 @@ executable('dpdk-rdma',
     'vhost_rdma_mr.c',
     'vhost_rdma_qp.c',
     'vhost_rdma_av.c',
+    'vhost_rdma_task.c',
+    'vhost_rdma_queue.c',
+    'vhost_rdma_opcode.c',
+    'vhost_rdma_net.c',
+    'vhost_rdma_comp.c',
+    'vhost_rdma_resp.c',
+    'vhost_rdma_recv.c',
+    'vhost_rdma_crc.c',
   ],
   dependencies: dpdk,
   c_args: [
     '-DALLOW_EXPERIMENTAL_API',
-    '-DDEBUG_RDMA'
+    '-DDEBUG_RDMA',
+    '-DDEBUG_ETHER',
+    '-DDEBUG_RDMA_DP',
   ],
   install : false
 )

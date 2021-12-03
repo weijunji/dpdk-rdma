@@ -122,7 +122,7 @@ vhost_rdma_del_gid(struct vhost_rdma_dev *dev, struct iovec *in, CTRL_NO_RSP)
 
 	RDMA_LOG_INFO("del gid %d", cmd->index);
 
-	dev->gid_tbl[cmd->index].type = VHOST_RDMA_GIT_TYPE_ILLIGAL;
+	dev->gid_tbl[cmd->index].type = VHOST_RDMA_GID_TYPE_ILLIGAL;
 
 	return 0;
 }
@@ -133,16 +133,19 @@ vhost_rdma_create_pd(struct vhost_rdma_dev *dev, struct iovec *in,
 {
 	__rte_unused struct cmd_create_pd *cmd;
 	struct rsp_create_pd *rsp;
+	struct vhost_rdma_pd *pd;
 	uint32_t idx;
 
 	CHK_IOVEC(cmd, in);
 	CHK_IOVEC(rsp, out);
 
-	if(vhost_rdma_pool_alloc(&dev->pd_pool, &idx) == NULL) {
+	pd = vhost_rdma_pool_alloc(&dev->pd_pool, &idx);
+	if(pd == NULL) {
 		return -ENOMEM;
 	}
 
 	RDMA_LOG_INFO("create pd %u", idx);
+	pd->dev = dev;
 	rsp->pdn = idx;
 
 	return 0;
@@ -444,8 +447,8 @@ vhost_rdma_create_qp(struct vhost_rdma_dev *dev, struct iovec *in,
 
 	rsp->qpn = qpn;
 
-	RDMA_LOG_INFO("create qp %u sq %u rq %u", qp->qpn, qp->sq.queue->id,
-					qp->rq.queue->id);
+	RDMA_LOG_INFO("create qp %u sq %u rq %u", qp->qpn, qp->sq.queue.vq->id,
+					qp->rq.queue.vq->id);
 
 	return 0;
 }
@@ -606,7 +609,7 @@ vhost_rdma_handle_ctrl(void* arg) {
 		break;
 	} while (1);
 
-	rte_vhost_enable_guest_notification(dev->vid, 0, 0);
+	//rte_vhost_enable_guest_notification(dev->vid, 0, 0);
 
 	while(vhost_vq_is_avail(ctrl_vq)) {
 		desc_idx = vq_get_desc_idx(ctrl_vq);
@@ -646,7 +649,7 @@ vhost_rdma_handle_ctrl(void* arg) {
 		vhost_queue_notify(dev->vid, ctrl_vq);
 	}
 out:
-	rte_vhost_enable_guest_notification(dev->vid, 0, 1);
+	//rte_vhost_enable_guest_notification(dev->vid, 0, 1);
 }
 
 void
@@ -714,7 +717,7 @@ vhost_rdma_init_ib(struct vhost_rdma_dev *dev) {
 	dev->port_attr.port_cap_flags2 	= 0;
 
 	for (int i = 0; i < VHOST_MAX_GID_TBL_LEN; i++) {
-		dev->gid_tbl[i].type = VHOST_RDMA_GIT_TYPE_ILLIGAL;
+		dev->gid_tbl[i].type = VHOST_RDMA_GID_TYPE_ILLIGAL;
 	}
 
 	dev->cq_vqs = &dev->vqs[1];
