@@ -136,25 +136,28 @@ vhost_rdma_scheduler(void* arg)
 	struct rte_mbuf *pkt;
 
 	RDMA_LOG_INFO("scheduler %u start", rte_lcore_id());
+	rte_timer_subsystem_init();
 
 	while (dev->task_ring) {
 		// recv_pkts
 		if (rte_ring_dequeue(dev->rx_ring, (void**)&pkt) == 0) {
-			RDMA_LOG_INFO_DP("recv pkt");
+			RDMA_LOG_DEBUG_DP("recv pkt");
 			vhost_rdma_net_recv(dev, pkt);
 		}
 
 		// task
-		if (rte_ring_dequeue(dev->task_ring, (void**)&task) != 0)
-			continue;
-		RDMA_LOG_DEBUG_DP("task (%s) start", task->name);
-		rte_atomic16_clear(&task->sched);
-		vhost_rdma_do_task(task);
-		RDMA_LOG_DEBUG_DP("task (%s) finish", task->name);
+		if (rte_ring_dequeue(dev->task_ring, (void**)&task) == 0) {
+			RDMA_LOG_DEBUG_DP("task (%s) start", task->name);
+			rte_atomic16_clear(&task->sched);
+			vhost_rdma_do_task(task);
+			RDMA_LOG_DEBUG_DP("task (%s) finish", task->name);
+		}
 
 		// timer
+		rte_timer_manage();
 	}
 
+	rte_timer_subsystem_finalize();
 	RDMA_LOG_INFO("scheduler %u quit", rte_lcore_id());
 	return 0;
 }
