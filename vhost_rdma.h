@@ -67,6 +67,11 @@
 #define VHOST_MAX_PD_NUM 0x7ffc
 #define VHOST_MAX_UCONTEXT 512
 
+#define VHOST_MAX_UNACKED_PSNS 128
+#define VHOST_INFLIGHT_SKBS_PER_QP_HIGH 64
+#define VHOST_INFLIGHT_SKBS_PER_QP_LOW 16
+#define VHOST_MAX_PKT_PER_ACK 64
+
 #define IB_DEFAULT_PKEY_FULL	0xFFFF
 
 /* VIRTIO_F_EVENT_IDX is NOT supported now */
@@ -126,6 +131,7 @@ struct vhost_rdma_dev {
 	// only one port
 	struct virtio_rdma_port_attr port_attr;
 	rte_spinlock_t port_lock;
+	unsigned int mtu_cap;
 	struct vhost_rdma_gid gid_tbl[VHOST_MAX_GID_TBL_LEN];
 	struct vhost_rdma_qp *qp_gsi;
 

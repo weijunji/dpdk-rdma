@@ -716,6 +716,8 @@ vhost_rdma_init_ib(struct vhost_rdma_dev *dev) {
 	dev->port_attr.phys_state		= 5; // IB_PORT_PHYS_STATE_LINK_UP
 	dev->port_attr.port_cap_flags2 	= 0;
 
+	dev->mtu_cap = ib_mtu_enum_to_int(IB_MTU_1024);
+
 	for (int i = 0; i < VHOST_MAX_GID_TBL_LEN; i++) {
 		dev->gid_tbl[i].type = VHOST_RDMA_GID_TYPE_ILLIGAL;
 	}

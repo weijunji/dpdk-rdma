@@ -22,10 +22,15 @@
 
 #include "vhost_rdma_loc.h"
 
-int
-vhost_rdma_requester(__rte_unused void* arg)
+void
+retransmit_timer(__rte_unused struct rte_timer *timer, void* arg)
 {
-	return -EAGAIN;
+	struct vhost_rdma_qp *qp = arg;
+
+	if (qp->valid) {
+		qp->comp.timeout = 1;
+		vhost_rdma_run_task(&qp->comp.task, 1);
+	}
 }
 
 void

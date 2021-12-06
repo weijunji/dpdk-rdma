@@ -143,9 +143,6 @@ vhost_rdma_net_recv(struct vhost_rdma_dev *dev, struct rte_mbuf *pkt)
 
 /**************** pkt send ******************/
 
-#define VHOST_INFLIGHT_SKBS_PER_QP_HIGH 64
-#define VHOST_INFLIGHT_SKBS_PER_QP_LOW 16
-
 static int
 ip_out(struct vhost_rdma_pkt_info *pkt, struct rte_mbuf* mbuf, uint16_t type)
 {
@@ -292,7 +289,7 @@ static void prepare_udp_hdr(struct rte_mbuf *m, rte_be16_t src_port,
 }
 
 static void prepare_ipv4_hdr(struct rte_mbuf *m, rte_be32_t saddr,
-	rte_be32_t daddr, uint8_t proto, uint8_t tos, uint8_t ttl, rte_be32_t df)
+	rte_be32_t daddr, uint8_t proto, uint8_t tos, uint8_t ttl, rte_be16_t df)
 {
 	struct rte_ipv4_hdr *iph;
 
@@ -300,8 +297,6 @@ static void prepare_ipv4_hdr(struct rte_mbuf *m, rte_be32_t saddr,
 
 	iph->version_ihl		=	RTE_IPV4_VHL_DEF;
 	iph->total_length		=	rte_cpu_to_be_16(m->data_len);
-	RDMA_LOG_DEBUG_DP("DF: %x", df);
-	// FIXME: not set
 	iph->fragment_offset	=	df;
 	iph->next_proto_id		=	proto;
 	iph->type_of_service	=	tos;
@@ -339,7 +334,7 @@ prepare4(struct vhost_rdma_pkt_info *pkt, struct rte_mbuf *m)
 	struct vhost_rdma_av *av = vhost_rdma_get_av(pkt);
 	struct in_addr *saddr = &av->sgid_addr._sockaddr_in.sin_addr;
 	struct in_addr *daddr = &av->dgid_addr._sockaddr_in.sin_addr;
-	rte_be32_t df = rte_cpu_to_be_32(RTE_IPV4_HDR_DF_FLAG);
+	rte_be16_t df = rte_cpu_to_be_16(RTE_IPV4_HDR_DF_FLAG);
 
 	prepare_udp_hdr(m, rte_cpu_to_be_16(qp->src_port),
 			rte_cpu_to_be_16(ROCE_V2_UDP_DPORT));

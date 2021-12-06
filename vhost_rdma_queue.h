@@ -94,6 +94,18 @@ consumer_addr(struct vhost_rdma_queue *q)
 }
 
 static __rte_always_inline void*
+addr_from_index(struct vhost_rdma_queue *q, unsigned int index)
+{
+	uint16_t cons;
+	uint16_t desc_idx;
+
+	cons = index & (q->num_elems - 1);
+	desc_idx = q->vq->vring.avail->ring[cons];
+
+	return vhost_rdma_queue_get_data(q, desc_idx);
+}
+
+static __rte_always_inline void*
 queue_head(struct vhost_rdma_queue *q)
 {
 	return queue_empty(q) ? NULL : consumer_addr(q);

@@ -27,6 +27,7 @@ executable('dpdk-rdma',
     'vhost_rdma_resp.c',
     'vhost_rdma_recv.c',
     'vhost_rdma_crc.c',
+    'vhost_rdma_req.c',
   ],
   dependencies: dpdk,
   c_args: [

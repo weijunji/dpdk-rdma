@@ -128,6 +128,7 @@ struct vhost_rdma_av *vhost_rdma_get_av(struct vhost_rdma_pkt_info *pkt);
 /* vhost_rdma_comp.c */
 void vhost_rdma_comp_queue_pkt(struct vhost_rdma_qp *qp, struct rte_mbuf *mbuf);
 int vhost_rdma_completer(void* arg);
+void retransmit_timer(struct rte_timer*, void* arg);
 
 int vhost_rdma_requester(void* arg);
 
@@ -165,6 +166,7 @@ int copy_data( struct vhost_rdma_pd *pd, int access,
 void* iova_to_vaddr(struct rte_vhost_memory *mem, struct vhost_rdma_mr *mr,
 			uint64_t iova, int length);
 int vhost_rdma_invalidate_mr(struct vhost_rdma_qp *qp, uint32_t rkey);
+int advance_dma_data(struct vhost_rdma_dma_info *dma, unsigned int length);
 
 /* vhost_rdma_net.c */
 #define ip_hdr(p) ((struct rte_ipv4_hdr*) \
