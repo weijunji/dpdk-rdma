@@ -76,7 +76,7 @@
 // TODO: rdma features
 
 struct vhost_rdma_gid {
-	#define VHOST_RDMA_GID_TYPE_ILLIGAL -1
+	#define VHOST_RDMA_GID_TYPE_ILLIGAL (-1u)
 	uint32_t type;
 	union ib_gid gid;
 };

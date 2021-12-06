@@ -136,7 +136,7 @@ eth_rx() {
 	}
 
 	/* send rdma pkts */
-	nb_rx_pkts = rte_ring_dequeue_bulk(rdma_tx_ring, (void**)pkts,
+	nb_rx_pkts = rte_ring_dequeue_burst(rdma_tx_ring, (void**)pkts,
 										MAX_PKTS_BURST, NULL);
 	if (nb_rx_pkts != 0) {
 		LOG_DEBUG("rx got %d rdma packets", nb_rx_pkts);
@@ -147,7 +147,7 @@ eth_rx() {
 
 			for (buf = nb_tx_pkts; buf < nb_rx_pkts; buf++)
 				rte_pktmbuf_free(pkts[buf]);
-			LOG_DEBUG("rx drop %d pkts", nb_rx_pkts - nb_tx_pkts);
+			LOG_DEBUG("rx drop %d rdma pkts", nb_rx_pkts - nb_tx_pkts);
 		}
 	}
 }

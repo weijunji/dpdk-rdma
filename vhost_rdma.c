@@ -30,6 +30,7 @@
 
 struct vhost_rdma_dev g_vhost_rdma_dev;
 
+// FIXME: new_device never called because not all vq have been used.
 static int
 new_device(__rte_unused int vid)
 {

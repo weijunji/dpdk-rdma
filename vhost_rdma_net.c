@@ -27,6 +27,20 @@
 #include "vhost_rdma_hdr.h"
 #include "vhost_rdma_loc.h"
 
+static __rte_always_inline
+void default_gid_to_mac(struct vhost_rdma_dev *dev, char *mac) {
+	struct vhost_rdma_gid *gid = &dev->gid_tbl[0];
+
+	assert(gid->type != VHOST_RDMA_GID_TYPE_ILLIGAL);
+
+	mac[0] = gid->gid.raw[8];
+	mac[1] = gid->gid.raw[9];
+	mac[2] = gid->gid.raw[10];
+	mac[3] = gid->gid.raw[13];
+	mac[4] = gid->gid.raw[14];
+	mac[5] = gid->gid.raw[15];
+}
+
 /**************** pkt recv ******************/
 
 static __rte_always_inline int
@@ -133,16 +147,29 @@ vhost_rdma_net_recv(struct vhost_rdma_dev *dev, struct rte_mbuf *pkt)
 #define VHOST_INFLIGHT_SKBS_PER_QP_LOW 16
 
 static int
-ip_out(struct rte_mbuf* mbuf, uint16_t type)
+ip_out(struct vhost_rdma_pkt_info *pkt, struct rte_mbuf* mbuf, uint16_t type)
 {
 	struct rte_ether_hdr *ether;
 
 	ether = (struct rte_ether_hdr *)rte_pktmbuf_prepend(mbuf, sizeof(*ether));
 
-	ether->ether_type = type;
-	// TODO: send pkt
-	//ether->d_addr = 
-	//ether->s_addr = 
+	ether->ether_type = rte_cpu_to_be_16(type);
+	default_gid_to_mac(pkt->dev, (char*)&ether->s_addr);
+	rte_memcpy(&ether->d_addr, vhost_rdma_get_av(pkt)->dmac, 6);
+
+	// IP checksum offload
+	mbuf->ol_flags = PKT_TX_IP_CKSUM;
+	if (type == RTE_ETHER_TYPE_IPV4) {
+		mbuf->ol_flags |= PKT_TX_IPV4;
+		mbuf->l3_len = sizeof(struct rte_ipv4_hdr);
+	} else {
+		mbuf->ol_flags |= PKT_TX_IPV6;
+		mbuf->l3_len = sizeof(struct rte_ipv6_hdr);
+	}
+	mbuf->l4_len = sizeof(struct rte_udp_hdr);
+	mbuf->l2_len = sizeof(struct rte_ether_hdr);
+
+	rte_ring_enqueue(pkt->dev->tx_ring, mbuf);
 
 	return 0;
 }
@@ -156,9 +183,9 @@ vhost_rdma_send(struct vhost_rdma_pkt_info *pkt, struct rte_mbuf *mbuf)
 	rte_atomic32_inc(&pkt->qp->mbuf_out);
 
 	if (mbuf->l3_type == VHOST_NETWORK_TYPE_IPV4) {
-		err = ip_out(mbuf, RTE_ETHER_TYPE_IPV4);
+		err = ip_out(pkt, mbuf, RTE_ETHER_TYPE_IPV4);
 	} else if (mbuf->l3_type == VHOST_NETWORK_TYPE_IPV6) {
-		err = ip_out(mbuf, RTE_ETHER_TYPE_IPV6);
+		err = ip_out(pkt, mbuf, RTE_ETHER_TYPE_IPV6);
 	} else {
 		RDMA_LOG_ERR_DP("Unknown layer 3 protocol: %u\n", mbuf->l3_type);
 		rte_pktmbuf_free(mbuf);
@@ -203,7 +230,7 @@ vhost_rdma_init_packet(struct vhost_rdma_dev *dev, struct vhost_rdma_av *av,
 
 	attr = &dev->gid_tbl[av->grh.sgid_index];
 	
-	if (attr->type == (uint32_t)VHOST_RDMA_GID_TYPE_ILLIGAL)
+	if (attr->type == VHOST_RDMA_GID_TYPE_ILLIGAL)
 		return NULL;
 
 	if (av->network_type == VHOST_NETWORK_TYPE_IPV4)
@@ -273,6 +300,8 @@ static void prepare_ipv4_hdr(struct rte_mbuf *m, rte_be32_t saddr,
 
 	iph->version_ihl		=	RTE_IPV4_VHL_DEF;
 	iph->total_length		=	rte_cpu_to_be_16(m->data_len);
+	RDMA_LOG_DEBUG_DP("DF: %x", df);
+	// FIXME: not set
 	iph->fragment_offset	=	df;
 	iph->next_proto_id		=	proto;
 	iph->type_of_service	=	tos;
@@ -345,6 +374,7 @@ vhost_rdma_prepare(struct vhost_rdma_pkt_info *pkt, struct rte_mbuf *m,
 				uint32_t *crc)
 {
 	int err = 0;
+	char dev_mac[6];
 
 	if (m->l3_type == VHOST_NETWORK_TYPE_IPV4)
 		err = prepare4(pkt, m);
@@ -353,9 +383,11 @@ vhost_rdma_prepare(struct vhost_rdma_pkt_info *pkt, struct rte_mbuf *m,
 
 	*crc = vhost_rdma_icrc_hdr(pkt, m);
 
-	// FIXME: check loopback
-	//if (ether_addr_equal(skb->dev->dev_addr, vhost_rdma_get_av(pkt)->dmac))
-	//	pkt->mask |= VHOST_LOOPBACK_MASK;
+	default_gid_to_mac(pkt->dev, dev_mac);
+
+	if (memcmp(dev_mac, vhost_rdma_get_av(pkt)->dmac, 6) == 0) {
+		pkt->mask |= VHOST_LOOPBACK_MASK;
+	}
 
 	return err;
 }

@@ -32,7 +32,7 @@ executable('dpdk-rdma',
   c_args: [
     '-DALLOW_EXPERIMENTAL_API',
     '-DDEBUG_RDMA',
-    '-DDEBUG_ETHER',
+    '-DDEBUG_ETHERNET',
     '-DDEBUG_RDMA_DP',
   ],
   install : false
