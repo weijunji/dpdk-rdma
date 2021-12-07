@@ -82,7 +82,7 @@ vhost_rdma_handle_sq(void *arg)
 		break;
 	} while (1);
 
-	RDMA_LOG_INFO("kick sq");
+	RDMA_LOG_DEBUG_DP("kick sq");
 
 	while(queue->producer_index != vring->avail->idx) {
 		uint16_t last_avail_idx = queue->producer_index & (vring->size - 1);
@@ -99,7 +99,7 @@ vhost_rdma_handle_sq(void *arg)
 		assert(num_out == 1);
 
 		if (iov.iov_len < sizeof(*wr)) {
-			RDMA_LOG_ERR("got bad send wqe");
+			RDMA_LOG_ERR_DP("got bad send wqe");
 			continue;
 		}
 		wr = iov.iov_base;
@@ -115,7 +115,8 @@ vhost_rdma_handle_sq(void *arg)
 				length += sg_list[i].length;
 		}
 
-		init_send_wqe(qp, wr, mask, length, vhost_rdma_queue_get_data(queue, desc_idx));
+		init_send_wqe(qp, wr, mask, length,
+						vhost_rdma_queue_get_data(queue, desc_idx));
 
 		queue->producer_index++;
 	}
@@ -142,13 +143,13 @@ vhost_rdma_handle_rq(__rte_unused void *arg)
 				errno == EWOULDBLOCK ||
 				errno == EAGAIN)
 				continue;
-			RDMA_LOG_ERR("Failed to read kickfd of ctrl virtq: %s",
+			RDMA_LOG_ERR_DP("Failed to read kickfd of ctrl virtq: %s",
 				strerror(errno));
 		}
 		break;
 	} while (1);
 
-	RDMA_LOG_INFO("kick rq");
+	RDMA_LOG_DEBUG_DP("kick rq");
 
 	while(queue->producer_index != vring->avail->idx) {
 		uint16_t last_avail_idx = queue->producer_index & (vring->size - 1);
@@ -167,7 +168,7 @@ vhost_rdma_handle_rq(__rte_unused void *arg)
 		assert(num_out == 1);
 
 		if (iov.iov_len < sizeof(*wr)) {
-			RDMA_LOG_ERR("got bad recv wqe");
+			RDMA_LOG_ERR_DP("got bad recv wqe");
 			continue;
 		}
 		wr = iov.iov_base;

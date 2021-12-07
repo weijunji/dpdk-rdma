@@ -349,13 +349,12 @@ alloc_rd_atomic_resources(struct vhost_rdma_qp *qp, unsigned int n)
 void
 free_rd_atomic_resource(__rte_unused struct vhost_rdma_qp *qp, struct resp_res *res)
 {
-	// TODO: free res
-	// if (res->type == RXE_ATOMIC_MASK) {
-	// 	kfree_skb(res->atomic.skb);
-	// } else if (res->type == RXE_READ_MASK) {
-	// 	if (res->read.mr)
-	// 		rxe_drop_ref(res->read.mr);
-	// }
+	if (res->type == VHOST_ATOMIC_MASK) {
+		rte_pktmbuf_free(res->atomic.mbuf);
+	} else if (res->type == VHOST_READ_MASK) {
+		//if (res->read.mr)
+		//	rxe_drop_ref(res->read.mr);
+	}
 	res->type = 0;
 }
 
@@ -521,10 +520,27 @@ vhost_rdma_qp_from_attr(struct vhost_rdma_dev *dev, struct vhost_rdma_qp *qp,
 
 		case IB_QPS_ERR:
 			RDMA_LOG_INFO("qp#%d state -> ERR", qp->qpn);
-			// TODO: rxe_qp_error(qp);
+			vhost_rdma_qp_error(qp);
 			break;
 		}
 	}
 
 	return 0;
+}
+
+void
+vhost_rdma_qp_error(struct vhost_rdma_qp *qp)
+{
+	qp->req.state = QP_STATE_ERROR;
+	qp->resp.state = QP_STATE_ERROR;
+	qp->attr.qp_state = IB_QPS_ERR;
+
+	/* drain work and packet queues */
+	vhost_rdma_run_task(&qp->resp.task, 1);
+
+	if (qp->type == IB_QPT_RC)
+		vhost_rdma_run_task(&qp->comp.task, 1);
+	else
+		__vhost_rdma_do_task(&qp->comp.task);
+	vhost_rdma_run_task(&qp->req.task, 1);
 }

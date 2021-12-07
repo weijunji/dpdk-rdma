@@ -922,7 +922,8 @@ send_atomic_ack(struct vhost_rdma_qp *qp, struct vhost_rdma_pkt_info *pkt,
 	vhost_rdma_advance_resp_resource(qp);
 
 	res->type = VHOST_ATOMIC_MASK;
-	// FIXME: skb_get(), when to free this mbuf
+	// FIXME: skb_get(), is this right?
+	rte_pktmbuf_refcnt_update(mbuf, 1);
 	res->atomic.mbuf = mbuf;
 	res->first_psn = ack_pkt.psn;
 	res->last_psn  = ack_pkt.psn;
@@ -1058,7 +1059,7 @@ duplicate_request(struct vhost_rdma_qp *qp, struct vhost_rdma_pkt_info *pkt)
 		/* Find the operation in our list of responder resources. */
 		res = find_resource(qp, pkt->psn);
 		if (res) {
-			// FIXME: skb_get(res->atomic.skb);
+			rte_pktmbuf_refcnt_update(res->atomic.mbuf, 1);
 			/* Resend the result. */
 			rc = vhost_rdma_xmit_packet(qp, pkt, res->atomic.mbuf);
 			if (rc) {
@@ -1327,7 +1328,7 @@ vhost_rdma_responder(void* arg)
 		case RESPST_ERROR:
 			qp->resp.goto_error = 0;
 			RDMA_LOG_ERR_DP("qp#%d moved to error state", qp->qpn);
-			// TODO: rxe_qp_error(qp);
+			vhost_rdma_qp_error(qp);
 			goto exit;
 
 		default:

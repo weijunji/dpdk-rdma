@@ -118,7 +118,7 @@ vhost_rdma_run_task(struct vhost_rdma_task *task, int sched)
 {
 	if (task->destroyed)
 		return;
-	RDMA_LOG_INFO_DP("run task %s sched %d", task->name, sched);
+	RDMA_LOG_DEBUG_DP("run task %s sched %d", task->name, sched);
 	if (sched) {
 		if (rte_atomic16_test_and_set(&task->sched)) {
 			rte_ring_enqueue(task->task_ring, task);

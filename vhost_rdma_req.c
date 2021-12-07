@@ -22,6 +22,14 @@
 
 #include "vhost_rdma_loc.h"
 
+void rnr_nak_timer(__rte_unused struct rte_timer *timer, void* arg)
+{
+	struct vhost_rdma_qp *qp = arg;
+
+	RDMA_LOG_DEBUG_DP("qp#%d rnr nak timer fired", qp->qpn);
+	vhost_rdma_run_task(&qp->req.task, 1);
+}
+
 static int
 next_opcode_rc(struct vhost_rdma_qp *qp, uint32_t opcode, int fits)
 {

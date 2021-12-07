@@ -330,6 +330,7 @@ main(int argc, char **argv)
 	if (ret < 0)
 		rte_panic("Cannot init EAL\n");
 
+	rte_log_set_global_level(RTE_LOG_NOTICE);
 	#ifdef DEBUG_ETHERNET
 	rte_log_set_global_level(RTE_LOG_DEBUG);
 	rte_log_set_level_pattern("lib.vhost.*", RTE_LOG_NOTICE);

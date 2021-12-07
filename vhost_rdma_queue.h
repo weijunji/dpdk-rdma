@@ -119,7 +119,7 @@ advance_consumer(struct vhost_rdma_queue *q)
 
 	assert(q->consumer_index == q->vq->last_avail_idx);
 
-	cons = q->consumer_index;
+	cons = q->consumer_index & (q->num_elems - 1);
 
 	desc = q->vq->vring.avail->ring[cons];
 

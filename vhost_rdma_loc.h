@@ -130,8 +130,6 @@ void vhost_rdma_comp_queue_pkt(struct vhost_rdma_qp *qp, struct rte_mbuf *mbuf);
 int vhost_rdma_completer(void* arg);
 void retransmit_timer(struct rte_timer*, void* arg);
 
-int vhost_rdma_requester(void* arg);
-
 /* vhost_rdma_crc.c */
 uint32_t crc32(uint32_t crc, void* buf, uint32_t len);
 uint32_t vhost_rdma_icrc_hdr(struct vhost_rdma_pkt_info *pkt,
@@ -245,6 +243,7 @@ int vhost_rdma_qp_chk_attr(struct vhost_rdma_dev *dev, struct vhost_rdma_qp *qp,
 int vhost_rdma_qp_from_attr(struct vhost_rdma_dev *dev,
 		struct vhost_rdma_qp *qp, struct virtio_rdma_qp_attr *attr, int mask);
 void free_rd_atomic_resource(struct vhost_rdma_qp *qp, struct resp_res *res);
+void vhost_rdma_qp_error(struct vhost_rdma_qp *qp);
 
 static inline void vhost_rdma_advance_resp_resource(struct vhost_rdma_qp *qp)
 {
@@ -252,6 +251,10 @@ static inline void vhost_rdma_advance_resp_resource(struct vhost_rdma_qp *qp)
 	if (unlikely(qp->resp.res_head == qp->attr.max_dest_rd_atomic))
 		qp->resp.res_head = 0;
 }
+
+/* vhost_rdma_req.c */
+void rnr_nak_timer(struct rte_timer *timer, void* arg);
+int vhost_rdma_requester(void* arg);
 
 /* vhost_rdma_resp.c */
 int vhost_rdma_responder(void* arg);
@@ -262,7 +265,7 @@ void vhost_rdma_rcv(struct rte_mbuf *mbuf);
 
 static inline int psn_compare(uint32_t psn_a, uint32_t psn_b)
 {
-	int diff;
+	int32_t diff;
 
 	diff = (psn_a - psn_b) << 8;
 	return diff;
