@@ -1059,6 +1059,7 @@ duplicate_request(struct vhost_rdma_qp *qp, struct vhost_rdma_pkt_info *pkt)
 		/* Find the operation in our list of responder resources. */
 		res = find_resource(qp, pkt->psn);
 		if (res) {
+			// FIXME: use clone to replace this?
 			rte_pktmbuf_refcnt_update(res->atomic.mbuf, 1);
 			/* Resend the result. */
 			rc = vhost_rdma_xmit_packet(qp, pkt, res->atomic.mbuf);

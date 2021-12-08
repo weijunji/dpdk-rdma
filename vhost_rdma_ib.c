@@ -715,6 +715,7 @@ vhost_rdma_init_ib(struct vhost_rdma_dev *dev) {
 	dev->port_attr.active_speed		= 1;
 	dev->port_attr.phys_state		= 5; // IB_PORT_PHYS_STATE_LINK_UP
 	dev->port_attr.port_cap_flags2 	= 0;
+	dev->port_attr.ip_gids			= 1;
 
 	dev->mtu_cap = ib_mtu_enum_to_int(IB_MTU_1024);
 

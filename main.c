@@ -131,7 +131,7 @@ eth_rx() {
 
 			for (buf = nb_tx_pkts; buf < nb_rx_pkts; buf++)
 				rte_pktmbuf_free(pkts[buf]);
-			LOG_DEBUG("rx drop %d pkts", nb_rx_pkts - nb_tx_pkts);
+			LOG_DEBUG_DP("rx drop %d pkts", nb_rx_pkts - nb_tx_pkts);
 		}
 	}
 
@@ -139,7 +139,7 @@ eth_rx() {
 	nb_rx_pkts = rte_ring_dequeue_burst(rdma_tx_ring, (void**)pkts,
 										MAX_PKTS_BURST, NULL);
 	if (nb_rx_pkts != 0) {
-		LOG_DEBUG("rx got %d rdma packets", nb_rx_pkts);
+		LOG_DEBUG_DP("rx got %d rdma packets", nb_rx_pkts);
 
 		nb_tx_pkts = rte_eth_tx_burst(pair_port_id, 0, pkts, nb_rx_pkts);
 		if (unlikely(nb_tx_pkts < nb_rx_pkts)) {
@@ -147,7 +147,7 @@ eth_rx() {
 
 			for (buf = nb_tx_pkts; buf < nb_rx_pkts; buf++)
 				rte_pktmbuf_free(pkts[buf]);
-			LOG_DEBUG("rx drop %d rdma pkts", nb_rx_pkts - nb_tx_pkts);
+			LOG_DEBUG_DP("rx drop %d rdma pkts", nb_rx_pkts - nb_tx_pkts);
 		}
 	}
 }
@@ -187,7 +187,6 @@ eth_tx() {
 		if (rte_be_to_cpu_16(udpv4->ether.ether_type) == RTE_ETHER_TYPE_IPV4 &&
 		    udpv4->ipv4.next_proto_id == IPPROTO_UDP &&
 			udpv4->udp.dst_port == htons(ROCE_V2_UDP_DPORT)) {
-			LOG_DEBUG("rocev2");
 			rdma_rx_one(pkts[i]);
 			continue;
 		}
@@ -196,7 +195,6 @@ eth_tx() {
 		if (rte_be_to_cpu_16(udpv6->ether.ether_type) == RTE_ETHER_TYPE_IPV6 &&
 		    udpv6->ipv6.proto == IPPROTO_UDP &&
 			udpv6->udp.dst_port == htons(ROCE_V2_UDP_DPORT)) {
-			LOG_DEBUG("rocev2");
 			rdma_rx_one(pkts[i]);
 			continue;
 		}
@@ -204,7 +202,7 @@ eth_tx() {
 		/* forward pkt to vhost_net */
 		if (unlikely(rte_eth_tx_burst(vhost_port_id, 0, &pkts[i], 1) != 1)) {
 			rte_pktmbuf_free(pkts[i]);
-			LOG_DEBUG("tx drop one pkt");
+			LOG_DEBUG_DP("tx drop one pkt");
 		}
 	}
 }
