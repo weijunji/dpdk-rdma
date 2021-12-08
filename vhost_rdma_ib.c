@@ -676,7 +676,7 @@ vhost_rdma_init_ib(struct vhost_rdma_dev *dev) {
 	dev->config.max_qp_rd_atom				= 128;
 	dev->config.max_res_rd_atom				= 0x3f000;
 	dev->config.max_qp_init_rd_atom			= 128;
-	dev->config.atomic_cap					= IBV_ATOMIC_HCA;
+	dev->config.atomic_cap					= IB_ATOMIC_HCA;
 	dev->config.max_mcast_grp				= 0;
 	dev->config.max_mcast_qp_attach			= 0;
 	dev->config.max_total_mcast_qp_attach	= 0;
@@ -695,13 +695,13 @@ vhost_rdma_init_ib(struct vhost_rdma_dev *dev) {
 	dev->max_inline_data = dev->config.max_send_sge *
 							sizeof(struct virtio_rdma_sge);
 
-	dev->port_attr.state			= IBV_PORT_ACTIVE;
+	dev->port_attr.state			= IB_PORT_ACTIVE;
 	dev->port_attr.max_mtu			= IB_MTU_4096;
 	dev->port_attr.active_mtu		= IB_MTU_256;
 	dev->port_attr.gid_tbl_len		= VHOST_MAX_GID_TBL_LEN;
-	dev->port_attr.port_cap_flags	= IBV_PORT_CM_SUP;
+	dev->port_attr.port_cap_flags	= (1 << 16); // IB_PORT_CM_SUP
 	dev->port_attr.max_msg_sz		= 0x800000;
-	dev->port_attr.bad_pkey_cntr		= 0;
+	dev->port_attr.bad_pkey_cntr	= 0;
 	dev->port_attr.qkey_viol_cntr	= 0;
 	dev->port_attr.pkey_tbl_len		= VHOST_PORT_PKEY_TBL_LEN;
 	dev->port_attr.lid				= 0;

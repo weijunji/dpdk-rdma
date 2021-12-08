@@ -30,6 +30,21 @@ enum ib_sig_type {
 	IB_SIGNAL_REQ_WR
 };
 
+enum ib_port_state {
+	IB_PORT_NOP		= 0,
+	IB_PORT_DOWN		= 1,
+	IB_PORT_INIT		= 2,
+	IB_PORT_ARMED		= 3,
+	IB_PORT_ACTIVE		= 4,
+	IB_PORT_ACTIVE_DEFER	= 5
+};
+
+enum ib_atomic_cap {
+	IB_ATOMIC_NONE =  IBV_ATOMIC_NONE,
+	IB_ATOMIC_HCA = IBV_ATOMIC_HCA,
+	IB_ATOMIC_GLOB = IBV_ATOMIC_GLOB
+};
+
 enum ib_qp_type {
 	IB_QPT_SMI,
 	IB_QPT_GSI,

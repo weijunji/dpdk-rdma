@@ -91,7 +91,6 @@ enum {
     VIRTIO_CMD_MODIFY_QP,
 	VIRTIO_CMD_QUERY_QP,
     VIRTIO_CMD_DESTROY_QP,
-    VIRTIO_CMD_QUERY_GID,
 	VIRTIO_CMD_CREATE_UC,
 	VIRTIO_CMD_DEALLOC_UC,
 	VIRTIO_CMD_QUERY_PKEY,
@@ -107,7 +106,7 @@ enum {
 };
 
 struct virtio_rdma_port_attr {
-	enum ibv_port_state	state;
+	enum ib_port_state	state;
 	enum ib_mtu	 max_mtu;
 	enum ib_mtu	 active_mtu;
 	uint32_t          phys_mtu;
