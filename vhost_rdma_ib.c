@@ -697,7 +697,7 @@ vhost_rdma_init_ib(struct vhost_rdma_dev *dev) {
 
 	dev->port_attr.state			= IB_PORT_ACTIVE;
 	dev->port_attr.max_mtu			= IB_MTU_4096;
-	dev->port_attr.active_mtu		= IB_MTU_256;
+	dev->port_attr.active_mtu		= IB_MTU_1024;
 	dev->port_attr.gid_tbl_len		= VHOST_MAX_GID_TBL_LEN;
 	dev->port_attr.port_cap_flags	= (1 << 16); // IB_PORT_CM_SUP
 	dev->port_attr.max_msg_sz		= 0x800000;

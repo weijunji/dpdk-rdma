@@ -100,6 +100,7 @@ vhost_rdma_map_pages(struct rte_vhost_memory *mem, uint64_t** page_tbl,
 		l2_addr = (uint64_t*)gpa_to_vva(mem, l1_addr[i], &len);
 		l2_npages = npages < BUF_PER_PAGE ? npages : BUF_PER_PAGE;
 		for (j = 0; j < l2_npages; j++) {
+			RDMA_LOG_DEBUG("set page %lx %ld", l2_addr[j], len);
 			page_tbl[i][j] = (uint64_t)gpa_to_vva(mem, l2_addr[j], &len);
 		}
 		npages -= l2_npages;

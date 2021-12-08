@@ -76,7 +76,7 @@ static __rte_always_inline bool queue_empty(struct vhost_rdma_queue *q)
 	prod = q->producer_index;
 	cons = q->consumer_index;
 
-	return ((prod - cons) & (q->num_elems - 1)) == 0;
+	return prod == cons;
 }
 
 static __rte_always_inline void*

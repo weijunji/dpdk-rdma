@@ -82,8 +82,6 @@ vhost_rdma_handle_sq(void *arg)
 		break;
 	} while (1);
 
-	RDMA_LOG_DEBUG_DP("kick sq");
-
 	while(queue->producer_index != vring->avail->idx) {
 		uint16_t last_avail_idx = queue->producer_index & (vring->size - 1);
 		uint16_t desc_idx = vring->avail->ring[last_avail_idx];
@@ -148,8 +146,6 @@ vhost_rdma_handle_rq(__rte_unused void *arg)
 		}
 		break;
 	} while (1);
-
-	RDMA_LOG_DEBUG_DP("kick rq");
 
 	while(queue->producer_index != vring->avail->idx) {
 		uint16_t last_avail_idx = queue->producer_index & (vring->size - 1);
