@@ -529,6 +529,7 @@ vhost_rdma_drain_resp_pkts(struct vhost_rdma_qp *qp, bool notify)
 	struct vhost_rdma_queue *q = &qp->sq.queue;
 
 	while (rte_ring_dequeue(qp->resp_pkts, (void**)&mbuf) == 0) {
+		vhost_rdma_drop_ref(qp, qp->dev, qp);
 		rte_pktmbuf_free(mbuf);
 	}
 
@@ -547,6 +548,7 @@ free_pkt(struct vhost_rdma_pkt_info *pkt)
 {
 	struct rte_mbuf *mbuf = PKT_TO_MBUF(pkt);
 
+	vhost_rdma_drop_ref(pkt->qp, pkt->qp->dev, qp);
 	rte_pktmbuf_free(mbuf);
 }
 
@@ -560,6 +562,8 @@ vhost_rdma_completer(void* arg)
 	struct vhost_rdma_pkt_info *pkt = NULL;
 	enum comp_state state;
 	int ret = 0;
+
+	vhost_rdma_add_ref(qp);
 
 	if (!qp->valid || qp->req.state == QP_STATE_ERROR ||
 	    qp->req.state == QP_STATE_RESET) {
@@ -757,6 +761,7 @@ vhost_rdma_completer(void* arg)
 done:
 	if (pkt)
 		free_pkt(pkt);
+	vhost_rdma_drop_ref(qp, qp->dev, qp);
 
 	return ret;
 }

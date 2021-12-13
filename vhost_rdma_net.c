@@ -176,7 +176,9 @@ vhost_rdma_send(struct vhost_rdma_pkt_info *pkt, struct rte_mbuf *mbuf)
 {
 	int err;
 	int mbuf_out;
+	struct vhost_rdma_qp *qp = pkt->qp;
 
+	vhost_rdma_add_ref(qp);
 	rte_atomic32_inc(&pkt->qp->mbuf_out);
 
 	if (mbuf->l3_type == VHOST_NETWORK_TYPE_IPV4) {
@@ -185,14 +187,17 @@ vhost_rdma_send(struct vhost_rdma_pkt_info *pkt, struct rte_mbuf *mbuf)
 		err = ip_out(pkt, mbuf, RTE_ETHER_TYPE_IPV6);
 	} else {
 		RDMA_LOG_ERR_DP("Unknown layer 3 protocol: %u\n", mbuf->l3_type);
+		vhost_rdma_drop_ref(qp, qp->dev, qp);
 		rte_pktmbuf_free(mbuf);
 		return -EINVAL;
 	}
 
 	mbuf_out = rte_atomic32_sub_return(&pkt->qp->mbuf_out, 1);
 	if (unlikely(pkt->qp->need_req_mbuf &&
-		     mbuf_out < VHOST_INFLIGHT_SKBS_PER_QP_LOW))
+			mbuf_out < VHOST_INFLIGHT_SKBS_PER_QP_LOW))
 		vhost_rdma_run_task(&pkt->qp->req.task, 1);
+
+	vhost_rdma_drop_ref(qp, qp->dev, qp);
 
 	if (unlikely(err)) {
 		RDMA_LOG_ERR_DP("ip out failed");

@@ -106,6 +106,7 @@ vhost_rdma_map_pages(struct rte_vhost_memory *mem, uint64_t** page_tbl,
 		npages -= l2_npages;
 	}
 }
+
 struct vhost_rdma_mr*
 lookup_mr(struct vhost_rdma_pd *pd, int access,
 		uint32_t key, enum vhost_rdma_mr_lookup_type type)
@@ -116,11 +117,13 @@ lookup_mr(struct vhost_rdma_pd *pd, int access,
 	mr = vhost_rdma_pool_get(&pd->dev->mr_pool, index);
 	if (!mr)
 		return NULL;
+	vhost_rdma_add_ref(mr);
 
 	if (unlikely((type == VHOST_LOOKUP_LOCAL && mr->lkey != key) ||
 		     (type == VHOST_LOOKUP_REMOTE && mr->rkey != key) ||
 		     mr->pd != pd || (access && !(access & mr->access)) ||
 		     mr->state != VHOST_MR_STATE_VALID)) {
+		vhost_rdma_drop_ref(mr, pd->dev, mr);
 		mr = NULL;
 	}
 
@@ -285,6 +288,7 @@ copy_data(
 
 		if (offset >= sge->length) {
 			if (mr) {
+				vhost_rdma_drop_ref(mr, pd->dev, mr);
 				mr = NULL;
 			}
 			sge++;
@@ -326,10 +330,15 @@ copy_data(
 
 	dma->sge_offset = offset;
 	dma->resid	= resid;
-RDMA_LOG_DEBUG_DP("copy finished");
+
+	if (mr)
+		vhost_rdma_drop_ref(mr, pd->dev, mr);
+
 	return 0;
 
 err2:
+	if (mr)
+		vhost_rdma_drop_ref(mr, pd->dev, mr);
 err1:
 	return err;
 }
@@ -389,17 +398,20 @@ vhost_rdma_invalidate_mr(struct vhost_rdma_qp *qp, uint32_t rkey)
 		ret = -EINVAL;
 		goto err;
 	}
+	vhost_rdma_add_ref(mr);
 
 	if (rkey != mr->rkey) {
 		RDMA_LOG_ERR_DP("%s: rkey (%#x) doesn't match mr->rkey (%#x)\n",
 			__func__, rkey, mr->rkey);
 		ret = -EINVAL;
-		goto err;
+		goto err_drop_ref;
 	}
 
 	mr->state = VHOST_MR_STATE_FREE;
 	ret = 0;
 
+err_drop_ref:
+	vhost_rdma_drop_ref(mr, qp->dev, mr);
 err:
 	return ret;
 }

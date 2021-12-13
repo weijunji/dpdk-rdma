@@ -244,6 +244,7 @@ int vhost_rdma_qp_from_attr(struct vhost_rdma_dev *dev,
 		struct vhost_rdma_qp *qp, struct virtio_rdma_qp_attr *attr, int mask);
 void free_rd_atomic_resource(struct vhost_rdma_qp *qp, struct resp_res *res);
 void vhost_rdma_qp_error(struct vhost_rdma_qp *qp);
+void vhost_rdma_qp_cleanup(void* arg);
 
 static inline void vhost_rdma_advance_resp_resource(struct vhost_rdma_qp *qp)
 {

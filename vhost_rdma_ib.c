@@ -143,9 +143,11 @@ vhost_rdma_create_pd(struct vhost_rdma_dev *dev, struct iovec *in,
 	if(pd == NULL) {
 		return -ENOMEM;
 	}
+	vhost_rdma_ref_init(pd);
 
 	RDMA_LOG_INFO("create pd %u", idx);
 	pd->dev = dev;
+	pd->pdn = idx;
 	rsp->pdn = idx;
 
 	return 0;
@@ -155,10 +157,12 @@ static int
 vhost_rdma_destroy_pd(struct vhost_rdma_dev *dev, struct iovec *in, CTRL_NO_RSP)
 {
 	struct cmd_destroy_pd *cmd;
+	struct vhost_rdma_pd *pd;
 
 	CHK_IOVEC(cmd, in);
 
-	vhost_rdma_pool_free(&dev->pd_pool, cmd->pdn);
+	pd = vhost_rdma_pool_get(&dev->pd_pool, cmd->pdn);
+	vhost_rdma_drop_ref(pd, dev, pd);
 
 	RDMA_LOG_INFO("destroy pd %u", cmd->pdn);
 
@@ -190,11 +194,15 @@ vhost_rdma_get_dma_mr(struct vhost_rdma_dev *dev, struct iovec *in,
 		return -ENOMEM;
 	}
 
+	vhost_rdma_ref_init(mr);
+	vhost_rdma_add_ref(pd);
+
 	mr->type = VHOST_MR_TYPE_DMA;
 	mr->state = VHOST_MR_STATE_VALID;
 	mr->access = cmd->access_flags;
 	mr->pd = pd;
 	vhost_rdma_mr_init_key(mr, mrn);
+	mr->mrn = mrn;
 
 	rsp->lkey = mr->lkey;
 	rsp->rkey = mr->rkey;
@@ -233,6 +241,9 @@ vhost_rdma_create_mr(struct vhost_rdma_dev *dev, struct iovec *in,
 		return -ENOMEM;
 	}
 
+	vhost_rdma_ref_init(mr);
+	vhost_rdma_add_ref(pd);
+
 	mr->type = VHOST_MR_TYPE_DMA;
 	mr->access = cmd->access_flags;
 	mr->pd = pd;
@@ -240,6 +251,7 @@ vhost_rdma_create_mr(struct vhost_rdma_dev *dev, struct iovec *in,
 	mr->state = VHOST_MR_STATE_FREE;
 	mr->npages = 0;
 	vhost_rdma_mr_init_key(mr, mrn);
+	mr->mrn = mrn;
 
 	rsp->lkey = mr->lkey;
 	rsp->rkey = mr->rkey;
@@ -282,23 +294,37 @@ vhost_rdma_reg_user_mr(struct vhost_rdma_dev *dev, struct iovec *in,
 	struct cmd_reg_user_mr *cmd;
 	struct rsp_reg_user_mr *rsp;
 	struct vhost_rdma_mr *mr;
+	struct vhost_rdma_pd *pd;
 	uint32_t mrn;
 
 	CHK_IOVEC(cmd, in);
 	CHK_IOVEC(rsp, out);
 
+	pd = vhost_rdma_pool_get(&dev->pd_pool, cmd->pdn);
+	if (unlikely(pd == NULL)) {
+		RDMA_LOG_ERR("pd is not found");
+		return -EINVAL;
+	}
+
 	mr = vhost_rdma_pool_alloc(&dev->mr_pool, &mrn);
+	if (mr == NULL) {
+		return -ENOMEM;
+	}
 
 	mr->page_tbl = vhost_rdma_alloc_page_tbl(cmd->npages);
 	if (mr->page_tbl == NULL) {
 		return -ENOMEM;
 	}
 
+	vhost_rdma_ref_init(mr);
+	vhost_rdma_add_ref(pd);
+
 	vhost_rdma_map_pages(dev->mem, mr->page_tbl, cmd->pages, cmd->npages);
+	// FIXME: remove me
 	RDMA_LOG_DEBUG("%s", (char*)mr->page_tbl[0][0]);
 	strcpy((char*)mr->page_tbl[0][0], "REG SUCCESS");
 
-	mr->pd = vhost_rdma_pool_get(&dev->pd_pool, cmd->pdn);
+	mr->pd = pd;
 	mr->access = cmd->access_flags;
 	mr->length = cmd->length;
 	mr->va = cmd->start;
@@ -309,6 +335,7 @@ vhost_rdma_reg_user_mr(struct vhost_rdma_dev *dev, struct iovec *in,
 	mr->state = VHOST_MR_STATE_VALID;
 	mr->max_pages = cmd->npages;
 	vhost_rdma_mr_init_key(mr, mrn);
+	mr->mrn = mrn;
 
 	rsp->lkey = mr->lkey;
 	rsp->rkey = mr->rkey;
@@ -338,8 +365,9 @@ vhost_rdma_dereg_mr(struct vhost_rdma_dev *dev, struct iovec *in, CTRL_NO_RSP)
 
 	mr->type = VHOST_MR_TYPE_NONE;
 
-	vhost_rdma_pool_free(&dev->mr_pool, cmd->mrn);
-	
+	vhost_rdma_drop_ref(mr->pd, dev, pd);
+	vhost_rdma_drop_ref(mr, dev, mr);
+
 	RDMA_LOG_DEBUG("destroy mr %u", cmd->mrn);
 
 	return 0;
@@ -365,11 +393,13 @@ vhost_rdma_create_cq(struct vhost_rdma_dev *dev, struct iovec *in,
 	if (cq == NULL) {
 		RDMA_LOG_ERR("cq alloc failed");
 	}
+	vhost_rdma_ref_init(cq);
 
 	rte_spinlock_init(&cq->cq_lock);
 	cq->is_dying = false;
 	cq->notify = 0;
 	cq->vq = &dev->cq_vqs[cqn];
+	cq->cqn = cqn;
 
 	rsp->cqn = cqn;
 	RDMA_LOG_INFO("create cq %u", cqn);
@@ -381,10 +411,17 @@ static int
 vhost_rdma_destroy_cq(struct vhost_rdma_dev *dev, struct iovec *in, CTRL_NO_RSP)
 {
 	struct cmd_destroy_cq *cmd;
+	struct vhost_rdma_cq *cq;
 
 	CHK_IOVEC(cmd, in);
 
-	vhost_rdma_pool_free(&dev->cq_pool, cmd->cqn);
+	cq = vhost_rdma_pool_get(&dev->cq_pool, cmd->cqn);
+
+	rte_spinlock_lock(&cq->cq_lock);
+	cq->is_dying = true;
+	rte_spinlock_unlock(&cq->cq_lock);
+
+	vhost_rdma_drop_ref(cq, dev, cq);
 
 	RDMA_LOG_DEBUG("destroy cq %u", cmd->cqn);
 
@@ -438,10 +475,16 @@ vhost_rdma_create_qp(struct vhost_rdma_dev *dev, struct iovec *in,
 		return -EINVAL;
 	}
 
+	if (qp == NULL) {
+		return -ENOMEM;
+	}
+	vhost_rdma_ref_init(qp);
+
 	qp->qpn = qpn;
 	
 	if (vhost_rdma_qp_init(dev, qp, cmd)) {
 		RDMA_LOG_ERR("init qp failed");
+		vhost_rdma_drop_ref(qp, dev, qp);
 		return -EINVAL;
 	}
 
@@ -462,10 +505,11 @@ vhost_rdma_destroy_qp(struct vhost_rdma_dev *dev, struct iovec *in, CTRL_NO_RSP)
 	CHK_IOVEC(cmd, in);
 
 	qp = vhost_rdma_pool_get(&dev->qp_pool, cmd->qpn);
-	
+
 	vhost_rdma_qp_destroy(qp);
 
-	vhost_rdma_pool_free(&dev->qp_pool, cmd->qpn);
+	if (qp->type != IB_QPT_GSI)
+		vhost_rdma_drop_ref(qp, dev, qp);
 
 	RDMA_LOG_DEBUG("destroy qp %u", cmd->qpn);
 
@@ -537,7 +581,9 @@ vhost_rdma_create_uc(struct vhost_rdma_dev *dev, struct iovec *in,
 	if (unlikely(uc == NULL)) {
 		return -ENOMEM;
 	}
+	vhost_rdma_ref_init(uc);
 	uc->pfn = cmd->pfn;
+	uc->ucn = ucn;
 
 	rsp->ctx_handle = ucn;
 
@@ -548,10 +594,16 @@ static int
 vhost_rdma_dealloc_uc(struct vhost_rdma_dev *dev, struct iovec *in, CTRL_NO_RSP)
 {
 	struct cmd_dealloc_uc *cmd;
+	struct vhost_rdma_ucontext *uc;
 
 	CHK_IOVEC(cmd, in);
 
-	vhost_rdma_pool_free(&dev->uc_pool, cmd->ctx_handle);
+	uc = vhost_rdma_pool_get(&dev->uc_pool, cmd->ctx_handle);
+	if (unlikely(uc == NULL)) {
+		return -ENOENT;
+	}
+
+	vhost_rdma_drop_ref(uc, dev, uc);
 
 	return 0;
 }
@@ -609,7 +661,7 @@ vhost_rdma_handle_ctrl(void* arg) {
 		break;
 	} while (1);
 
-	//rte_vhost_enable_guest_notification(dev->vid, 0, 0);
+	rte_vhost_enable_guest_notification(dev->vid, 0, 0);
 
 	while(vhost_vq_is_avail(ctrl_vq)) {
 		desc_idx = vq_get_desc_idx(ctrl_vq);
@@ -649,7 +701,7 @@ vhost_rdma_handle_ctrl(void* arg) {
 		vhost_queue_notify(dev->vid, ctrl_vq);
 	}
 out:
-	//rte_vhost_enable_guest_notification(dev->vid, 0, 1);
+	rte_vhost_enable_guest_notification(dev->vid, 0, 1);
 }
 
 void
@@ -727,17 +779,18 @@ vhost_rdma_init_ib(struct vhost_rdma_dev *dev) {
 	dev->qp_vqs = &dev->vqs[1 + dev->config.max_cq];
 
 	vhost_rdma_pool_init(&dev->pd_pool, "pd_pool", dev->config.max_pd,
-						sizeof(struct vhost_rdma_pd), false);
+						sizeof(struct vhost_rdma_pd), false, NULL);
 	vhost_rdma_pool_init(&dev->mr_pool, "mr_pool", dev->config.max_mr,
-						sizeof(struct vhost_rdma_mr), false);
+						sizeof(struct vhost_rdma_mr), false, NULL);
 	vhost_rdma_pool_init(&dev->cq_pool, "cq_pool", dev->config.max_cq,
-						sizeof(struct vhost_rdma_cq), true);
+						sizeof(struct vhost_rdma_cq), true, NULL);
 	vhost_rdma_pool_init(&dev->qp_pool, "qp_pool", dev->config.max_qp,
-						sizeof(struct vhost_rdma_qp), false);
+						sizeof(struct vhost_rdma_qp), false, vhost_rdma_qp_cleanup);
 	dev->qp_gsi = vhost_rdma_pool_alloc(&dev->qp_pool, &qpn);
+	vhost_rdma_add_ref(dev->qp_gsi);
 	assert(qpn == 1);
 	vhost_rdma_pool_init(&dev->uc_pool, "uc_pool", VHOST_MAX_UCONTEXT,
-						sizeof(struct vhost_rdma_ucontext), false);
+						sizeof(struct vhost_rdma_ucontext), false, NULL);
 }
 
 void

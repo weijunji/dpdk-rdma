@@ -36,6 +36,9 @@
 
 struct vhost_rdma_pd {
 	struct vhost_rdma_dev *dev;
+
+	uint32_t pdn;
+	rte_atomic32_t refcnt;
 };
 
 enum vhost_rdma_mr_type {
@@ -74,6 +77,9 @@ struct vhost_rdma_mr {
 	// uint32_t	num_map;
 
 	uint64_t** page_tbl;
+
+	uint32_t mrn;
+	rte_atomic32_t refcnt;
 };
 
 struct vhost_rdma_cq {
@@ -81,6 +87,9 @@ struct vhost_rdma_cq {
 	rte_spinlock_t		cq_lock;
 	uint8_t			notify;
 	bool			is_dying;
+
+	uint32_t cqn;
+	rte_atomic32_t refcnt;
 };
 
 struct vhost_rdma_av {
@@ -286,7 +295,6 @@ struct vhost_rdma_qp {
 	struct rte_ring	*req_pkts;
 	struct rte_mbuf *req_pkts_head; // use this to support peek
 	struct rte_ring *resp_pkts;
-	struct rte_mbuf *resp_pkts_head; // use this to support peek
 
 	struct vhost_rdma_req_info	req;
 	struct vhost_rdma_comp_info	comp;
@@ -309,11 +317,14 @@ struct vhost_rdma_qp {
 
 	rte_spinlock_t		state_lock; /* guard requester and completer */
 
-	// struct execute_work	cleanup_work;
+	rte_atomic32_t refcnt;
 };
 
 struct vhost_rdma_ucontext {
 	uint32_t pfn;
+
+	uint32_t ucn;
+	rte_atomic32_t refcnt;
 };
 
 static inline int ib_mtu_enum_to_int(enum ib_mtu mtu)

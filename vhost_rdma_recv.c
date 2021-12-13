@@ -272,26 +272,30 @@ static int hdr_check(struct vhost_rdma_pkt_info *pkt)
 			RDMA_LOG_ERR_DP("no qp matches qpn 0x%x\n", qpn);
 			goto err1;
 		}
+		vhost_rdma_add_ref(qp);
 
 		err = check_type_state(pkt, qp);
 		if (unlikely(err))
-			goto err1;
+			goto err2;
 
 		err = check_addr(pkt, qp);
 		if (unlikely(err))
-			goto err1;
+			goto err2;
 
 		err = check_keys(dev, pkt, qpn, qp);
 		if (unlikely(err))
-			goto err1;
+			goto err2;
 	} else {
 		RDMA_LOG_ERR_DP("mcast is not suppported now");
+		goto err2;
 	}
 
 	pkt->qp = qp;
 
 	return 0;
 
+err2:
+	vhost_rdma_drop_ref(qp, dev, qp);
 err1:
 	RDMA_LOG_ERR_DP("hdr_check failed");
 	return -EINVAL;
@@ -354,13 +358,15 @@ vhost_rdma_rcv(struct rte_mbuf *mbuf)
 	if (unlikely(bth_qpn(pkt) == IB_MULTICAST_QPN)) {
 		// rxe_rcv_mcast_pkt(rxe, skb);
 		RDMA_LOG_ERR_DP("multicast qpn is not supported");
+		goto drop;
 	} else {
-		RDMA_LOG_DEBUG_DP("all check passed");
 		vhost_rdma_rcv_pkt(pkt, mbuf);
 	}
 
 	return;
 
 drop:
+	if (pkt->qp)
+		vhost_rdma_drop_ref(pkt->qp, dev, qp);
 	rte_pktmbuf_free(mbuf);
 }

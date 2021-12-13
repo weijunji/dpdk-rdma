@@ -118,10 +118,12 @@ get_req(struct vhost_rdma_qp *qp, struct vhost_rdma_pkt_info **pkt_p)
 
 	if (qp->resp.state == QP_STATE_ERROR) {
 		if (qp->req_pkts_head != NULL) {
+			vhost_rdma_drop_ref(qp, qp->dev, qp);
 			rte_pktmbuf_free(qp->req_pkts_head);
 			qp->req_pkts_head = NULL;
 		}
 		while (rte_ring_dequeue(qp->req_pkts, (void**)&mbuf) == 0) {
+			vhost_rdma_drop_ref(qp, qp->dev, qp);
 			rte_pktmbuf_free(mbuf);
 		}
 		/* go drain recv wr queue */
@@ -465,6 +467,8 @@ check_rkey(struct vhost_rdma_qp *qp, struct vhost_rdma_pkt_info *pkt)
 	return RESPST_EXECUTE;
 
 err:
+	if (mr)
+		vhost_rdma_drop_ref(mr, qp->dev, mr);
 	return state;
 }
 
@@ -906,7 +910,7 @@ send_atomic_ack(struct vhost_rdma_qp *qp, struct vhost_rdma_pkt_info *pkt,
 {
 	int rc = 0;
 	struct vhost_rdma_pkt_info ack_pkt;
-	struct rte_mbuf *mbuf;
+	struct rte_mbuf *mbuf, *clone;
 	struct resp_res *res;
 
 	mbuf = prepare_ack_packet(qp, pkt, &ack_pkt,
@@ -923,15 +927,17 @@ send_atomic_ack(struct vhost_rdma_qp *qp, struct vhost_rdma_pkt_info *pkt,
 
 	res->type = VHOST_ATOMIC_MASK;
 	// FIXME: skb_get(), is this right?
-	rte_pktmbuf_refcnt_update(mbuf, 1);
+	clone = rte_pktmbuf_clone(mbuf, qp->dev->mbuf_pool);
 	res->atomic.mbuf = mbuf;
 	res->first_psn = ack_pkt.psn;
 	res->last_psn  = ack_pkt.psn;
 	res->cur_psn   = ack_pkt.psn;
 
-	rc = vhost_rdma_xmit_packet(qp, &ack_pkt, mbuf);
+	rc = vhost_rdma_xmit_packet(qp, &ack_pkt, clone);
 	if (rc) {
 		RDMA_LOG_ERR_DP("Failed sending ack");
+		// FIXME: when add_ref?
+		vhost_rdma_drop_ref(qp, qp->dev, qp);
 	}
 out:
 	return rc;
@@ -966,10 +972,12 @@ cleanup(struct vhost_rdma_qp *qp, struct vhost_rdma_pkt_info *pkt)
 		} else {
 			rte_ring_dequeue(qp->req_pkts, (void**)&mbuf);
 		}
+		vhost_rdma_drop_ref(qp, qp->dev, qp);
 		rte_pktmbuf_free(mbuf);
 	}
 
 	if (qp->resp.mr) {
+		vhost_rdma_drop_ref(qp->resp.mr, qp->dev, mr);
 		qp->resp.mr = NULL;
 	}
 
@@ -1059,10 +1067,11 @@ duplicate_request(struct vhost_rdma_qp *qp, struct vhost_rdma_pkt_info *pkt)
 		/* Find the operation in our list of responder resources. */
 		res = find_resource(qp, pkt->psn);
 		if (res) {
-			// FIXME: use clone to replace this?
-			rte_pktmbuf_refcnt_update(res->atomic.mbuf, 1);
+			// FIXME: skb_get?
+			struct rte_mbuf* clone;
+			clone = rte_pktmbuf_clone(res->atomic.mbuf, qp->dev->mbuf_pool);
 			/* Resend the result. */
-			rc = vhost_rdma_xmit_packet(qp, pkt, res->atomic.mbuf);
+			rc = vhost_rdma_xmit_packet(qp, pkt, clone);
 			if (rc) {
 				RDMA_LOG_ERR_DP("Failed resending result.");
 				rc = RESPST_CLEANUP;
@@ -1117,6 +1126,7 @@ do_class_d1e_error(struct vhost_rdma_qp *qp)
 		}
 
 		if (qp->resp.mr) {
+			vhost_rdma_drop_ref(qp->resp.mr, qp->dev, mr);
 			qp->resp.mr = NULL;
 		}
 
@@ -1131,11 +1141,13 @@ vhost_rdma_drain_req_pkts(struct vhost_rdma_qp *qp, bool notify)
 	struct vhost_rdma_queue *q = &qp->rq.queue;
 
 	if (qp->req_pkts_head != NULL) {
+		vhost_rdma_drop_ref(qp, qp->dev, qp);
 		rte_pktmbuf_free(qp->req_pkts_head);
 		qp->req_pkts_head = NULL;
 	}
 
 	while (rte_ring_dequeue(qp->req_pkts, (void**)&mbuf) == 0) {
+		vhost_rdma_drop_ref(qp, qp->dev, qp);
 		rte_pktmbuf_free(mbuf);
 	}
 
@@ -1154,6 +1166,8 @@ vhost_rdma_responder(void* arg)
 	enum resp_states state;
 	struct vhost_rdma_pkt_info *pkt = NULL;
 	int ret = 0;
+
+	vhost_rdma_add_ref(qp);
 
 	qp->resp.aeth_syndrome = AETH_ACK_UNLIMITED;
 
@@ -1340,6 +1354,7 @@ vhost_rdma_responder(void* arg)
 exit:
 	ret = -EAGAIN;
 done:
+	vhost_rdma_drop_ref(qp, qp->dev, qp);
 	return ret;
 }
 

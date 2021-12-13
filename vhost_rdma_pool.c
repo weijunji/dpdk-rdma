@@ -68,7 +68,7 @@ vhost_rdma_pool_get(struct vhost_rdma_pool* pool, uint32_t idx)
 
 int
 vhost_rdma_pool_init(struct vhost_rdma_pool* pool, char* name, uint32_t num,
-					uint32_t size, bool start_zero)
+					uint32_t size, bool start_zero, void (*cleanup)(void*))
 {
 	void *mem;
 	uint32_t bmp_size;
@@ -113,6 +113,7 @@ vhost_rdma_pool_init(struct vhost_rdma_pool* pool, char* name, uint32_t num,
 	pool->bitmap_mem = mem;
 	pool->num = num;
 	pool->size = size;
+	pool->cleanup = cleanup;
 
 	return 0;
 }

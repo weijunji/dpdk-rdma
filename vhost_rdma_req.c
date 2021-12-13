@@ -364,11 +364,13 @@ vhost_rdma_do_local_ops(struct vhost_rdma_qp *qp,
 		break;
 	case VIRTIO_RDMA_WR_REG_MR:
 		mr = vhost_rdma_pool_get(&qp->dev->mr_pool, wqe->wr->wr.reg.mrn);
+		vhost_rdma_add_ref(mr);
 		mr->state = VHOST_MR_STATE_VALID;
 		mr->access = wqe->wr->wr.reg.access;
 		mr->lkey = wqe->wr->wr.reg.key;
 		mr->rkey = wqe->wr->wr.reg.key;
 		// FIXME: mr->iova = wqe->wr.wr.reg.mr->iova;
+		vhost_rdma_drop_ref(mr, qp->dev, mr);
 		break;
 	case VIRTIO_RDMA_WR_BIND_MW:
 		// ret = rxe_bind_mw(qp, wqe);
@@ -643,6 +645,8 @@ int vhost_rdma_requester(void *arg)
 	uint32_t rollback_psn;
 	struct vhost_rdma_queue *q = &qp->sq.queue;
 
+	vhost_rdma_add_ref(qp);
+
 next_wqe:
 	if (unlikely(!qp->valid || qp->req.state == QP_STATE_ERROR))
 		goto exit;
@@ -718,6 +722,7 @@ next_wqe:
 			wqe->state = wqe_state_done;
 			wqe->status = IB_WC_SUCCESS;
 			__vhost_rdma_do_task(&qp->comp.task);
+			vhost_rdma_drop_ref(qp, qp->dev, qp);
 			return 0;
 		}
 		payload = mtu;
@@ -774,5 +779,6 @@ err:
 	__vhost_rdma_do_task(&qp->comp.task);
 
 exit:
+	vhost_rdma_drop_ref(qp, qp->dev, qp);
 	return -EAGAIN;
 }

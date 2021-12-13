@@ -96,7 +96,6 @@ static int vhost_rdma_qp_init_resp(struct vhost_rdma_dev *dev,
 		rte_free(qp->resp_pkts);
 		return -ENOMEM;
 	}
-	qp->resp_pkts_head = NULL;
 
 	vhost_rdma_init_task(&qp->resp.task, dev->task_ring, qp,
 			vhost_rdma_responder, "resp");
@@ -129,6 +128,9 @@ int vhost_rdma_qp_init(struct vhost_rdma_dev *dev, struct vhost_rdma_qp *qp,
 	qp->pd = vhost_rdma_pool_get(&dev->pd_pool, cmd->pdn);
 	qp->scq = vhost_rdma_pool_get(&dev->cq_pool, cmd->send_cqn);
 	qp->rcq = vhost_rdma_pool_get(&dev->cq_pool, cmd->recv_cqn);
+	vhost_rdma_add_ref(qp->pd);
+	vhost_rdma_add_ref(qp->rcq);
+	vhost_rdma_add_ref(qp->scq);
 
 	vhost_rdma_qp_init_misc(dev, qp, cmd);
 
@@ -151,6 +153,9 @@ err:
 	qp->pd = NULL;
 	qp->rcq = NULL;
 	qp->scq = NULL;
+	vhost_rdma_drop_ref(qp->pd, dev, pd);
+	vhost_rdma_drop_ref(qp->rcq, dev, cq);
+	vhost_rdma_drop_ref(qp->scq, dev, cq);
 
 	return err;
 }
@@ -352,8 +357,8 @@ free_rd_atomic_resource(__rte_unused struct vhost_rdma_qp *qp, struct resp_res *
 	if (res->type == VHOST_ATOMIC_MASK) {
 		rte_pktmbuf_free(res->atomic.mbuf);
 	} else if (res->type == VHOST_READ_MASK) {
-		//if (res->read.mr)
-		//	rxe_drop_ref(res->read.mr);
+		if (res->read.mr)
+			vhost_rdma_drop_ref(res->read.mr, qp->dev, mr);
 	}
 	res->type = 0;
 }
@@ -543,4 +548,26 @@ vhost_rdma_qp_error(struct vhost_rdma_qp *qp)
 	else
 		__vhost_rdma_do_task(&qp->comp.task);
 	vhost_rdma_run_task(&qp->req.task, 1);
+}
+
+void vhost_rdma_qp_cleanup(void* arg)
+{
+	struct vhost_rdma_qp *qp = arg;
+
+	//if (qp->srq)
+	//	rxe_drop_ref(qp->srq);
+
+	if (qp->scq)
+		vhost_rdma_drop_ref(qp->scq, qp->dev, cq);
+	if (qp->rcq)
+		vhost_rdma_drop_ref(qp->rcq, qp->dev, cq);
+	if (qp->pd)
+		vhost_rdma_drop_ref(qp->pd, qp->dev, pd);
+
+	if (qp->resp.mr) {
+		vhost_rdma_drop_ref(qp->resp.mr, qp->dev, mr);
+		qp->resp.mr = NULL;
+	}
+
+	free_rd_atomic_resources(qp);
 }

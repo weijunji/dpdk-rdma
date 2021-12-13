@@ -32,12 +32,35 @@ struct vhost_rdma_pool {
 
 	struct rte_bitmap* bitmap;
 	void* bitmap_mem;
+
+	void (*cleanup)(void *arg);
 };
 
 int vhost_rdma_pool_init(struct vhost_rdma_pool* pool, char* name, uint32_t num,
-					uint32_t size, bool start_zero);
+					uint32_t size, bool start_zero, void(*cleanup)(void *arg));
 void vhost_rdma_pool_destroy(struct vhost_rdma_pool* pool);
 void* vhost_rdma_pool_alloc(struct vhost_rdma_pool* pool, uint32_t *idx);
 void vhost_rdma_pool_free(struct vhost_rdma_pool* pool, uint32_t idx);
 void* vhost_rdma_pool_get(struct vhost_rdma_pool* pool, uint32_t idx);
+
+
+#define vhost_rdma_ref_init(obj) \
+	do{\
+		rte_atomic32_init(&(obj)->refcnt); \
+		rte_atomic32_inc(&(obj)->refcnt); \
+	}while(0)
+
+#define vhost_rdma_add_ref(obj) rte_atomic32_inc(&obj->refcnt)
+
+#define vhost_rdma_drop_ref(obj, dev, type) \
+	do { \
+		if (rte_atomic32_dec_and_test(&(obj)->refcnt)) { \
+			struct vhost_rdma_pool* pool = &(dev)->type##_pool; \
+			if ((pool)->cleanup) { \
+				(pool)->cleanup(obj); \
+			} \
+			vhost_rdma_pool_free(pool, obj->type##n); \
+		} \
+	}while(0)
+
 #endif
