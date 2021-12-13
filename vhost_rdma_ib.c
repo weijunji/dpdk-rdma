@@ -359,12 +359,6 @@ vhost_rdma_dereg_mr(struct vhost_rdma_dev *dev, struct iovec *in, CTRL_NO_RSP)
 
 	mr->state = VHOST_MR_STATE_ZOMBIE;
 
-	if (mr->type == VHOST_MR_TYPE_MR) {
-		vhost_rdma_destroy_page_tbl(mr->page_tbl, mr->max_pages);
-	}
-
-	mr->type = VHOST_MR_TYPE_NONE;
-
 	vhost_rdma_drop_ref(mr->pd, dev, pd);
 	vhost_rdma_drop_ref(mr, dev, mr);
 
@@ -781,7 +775,7 @@ vhost_rdma_init_ib(struct vhost_rdma_dev *dev) {
 	vhost_rdma_pool_init(&dev->pd_pool, "pd_pool", dev->config.max_pd,
 						sizeof(struct vhost_rdma_pd), false, NULL);
 	vhost_rdma_pool_init(&dev->mr_pool, "mr_pool", dev->config.max_mr,
-						sizeof(struct vhost_rdma_mr), false, NULL);
+						sizeof(struct vhost_rdma_mr), false, vhost_rdma_mr_cleanup);
 	vhost_rdma_pool_init(&dev->cq_pool, "cq_pool", dev->config.max_cq,
 						sizeof(struct vhost_rdma_cq), true, NULL);
 	vhost_rdma_pool_init(&dev->qp_pool, "qp_pool", dev->config.max_qp,

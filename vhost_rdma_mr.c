@@ -74,7 +74,7 @@ vhost_rdma_alloc_page_tbl(uint32_t npages)
 	return l1;
 }
 
-void
+static void
 vhost_rdma_destroy_page_tbl(uint64_t **page_tbl, uint32_t npages)
 {
 	uint32_t nl2 = get_num_l2_pages(npages);
@@ -448,4 +448,16 @@ advance_dma_data(struct vhost_rdma_dma_info *dma, unsigned int length)
 	dma->resid	= resid;
 
 	return 0;
+}
+
+void
+vhost_rdma_mr_cleanup(void* arg)
+{
+	struct vhost_rdma_mr *mr = arg;
+
+	if (mr->type == VHOST_MR_TYPE_MR) {
+		vhost_rdma_destroy_page_tbl(mr->page_tbl, mr->max_pages);
+	}
+
+	mr->type = VHOST_MR_TYPE_NONE;
 }

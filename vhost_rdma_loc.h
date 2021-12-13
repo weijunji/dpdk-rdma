@@ -149,7 +149,6 @@ enum vhost_rdma_mr_lookup_type {
 uint8_t vhost_rdma_get_next_key(uint32_t last_key);
 void vhost_rdma_mr_init_key(struct vhost_rdma_mr *mr, uint32_t mrn);
 uint64_t** vhost_rdma_alloc_page_tbl(uint32_t npages);
-void vhost_rdma_destroy_page_tbl(uint64_t **page_tbl, uint32_t npages);
 void vhost_rdma_map_pages(struct rte_vhost_memory *mem, uint64_t** page_tbl,
 					uint64_t dma_pages, uint32_t npages);
 struct vhost_rdma_mr* lookup_mr(struct vhost_rdma_pd *pd, int access,
@@ -165,6 +164,7 @@ void* iova_to_vaddr(struct rte_vhost_memory *mem, struct vhost_rdma_mr *mr,
 			uint64_t iova, int length);
 int vhost_rdma_invalidate_mr(struct vhost_rdma_qp *qp, uint32_t rkey);
 int advance_dma_data(struct vhost_rdma_dma_info *dma, unsigned int length);
+void vhost_rdma_mr_cleanup(void* arg);
 
 /* vhost_rdma_net.c */
 #define ip_hdr(p) ((struct rte_ipv4_hdr*) \

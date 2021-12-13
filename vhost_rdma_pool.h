@@ -43,23 +43,22 @@ void* vhost_rdma_pool_alloc(struct vhost_rdma_pool* pool, uint32_t *idx);
 void vhost_rdma_pool_free(struct vhost_rdma_pool* pool, uint32_t idx);
 void* vhost_rdma_pool_get(struct vhost_rdma_pool* pool, uint32_t idx);
 
-
 #define vhost_rdma_ref_init(obj) \
 	do{\
 		rte_atomic32_init(&(obj)->refcnt); \
 		rte_atomic32_inc(&(obj)->refcnt); \
 	}while(0)
 
-#define vhost_rdma_add_ref(obj) rte_atomic32_inc(&obj->refcnt)
+#define vhost_rdma_add_ref(obj) rte_atomic32_inc(&(obj)->refcnt)
 
 #define vhost_rdma_drop_ref(obj, dev, type) \
 	do { \
 		if (rte_atomic32_dec_and_test(&(obj)->refcnt)) { \
 			struct vhost_rdma_pool* pool = &(dev)->type##_pool; \
-			if ((pool)->cleanup) { \
-				(pool)->cleanup(obj); \
+			if (pool->cleanup) { \
+				pool->cleanup(obj); \
 			} \
-			vhost_rdma_pool_free(pool, obj->type##n); \
+			vhost_rdma_pool_free(pool, (obj)->type##n); \
 		} \
 	}while(0)
 
