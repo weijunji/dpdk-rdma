@@ -50,6 +50,7 @@ vhost_rdma_pool_alloc(struct vhost_rdma_pool* pool, uint32_t *idx)
 void
 vhost_rdma_pool_free(struct vhost_rdma_pool* pool, uint32_t idx)
 {
+	// FIXME: lock?
 	rte_bitmap_set(pool->bitmap, idx);
 }
 

@@ -130,7 +130,6 @@ lookup_mr(struct vhost_rdma_pd *pd, int access,
 	return mr;
 }
 
-// FIXME: not sure if this is right
 int
 mr_check_range(struct vhost_rdma_mr *mr, uint64_t iova, size_t length)
 {

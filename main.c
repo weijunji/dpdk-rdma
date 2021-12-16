@@ -318,7 +318,6 @@ main(int argc, char **argv)
 	int ret;
 	uint16_t port_id;
 	struct rte_eth_dev_info dev_info;
-	uint16_t nb_dev;
 	bool vhost_found = false;
 	bool pair_found = false;
 
@@ -355,14 +354,6 @@ main(int argc, char **argv)
 		);
 	}
 
-	nb_dev = rte_eth_dev_count_avail();
-	if (nb_dev < 2) {
-		rte_exit(EXIT_FAILURE, "Not enough eth_devs");
-	}
-	if (nb_dev > 2) {
-		LOG_WARN("Found %u eth_dev, but only two will be used", nb_dev);
-	}
-
 	/* init mempool */
 	mbuf_pool = rte_pktmbuf_pool_create("mbuf_pool", 65535,
 			250, sizeof(struct vhost_rdma_pkt_info), RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
@@ -391,7 +382,7 @@ main(int argc, char **argv)
 				rte_exit(EXIT_FAILURE, "%s\n", rte_strerror(rte_errno));
 			}
 			LOG_INFO("use %s(%d) as vhost dev", dev_info.device->name, port_id);
-		} else if (!pair_found) {
+		} else if (!pair_found && strcmp(dev_info.driver_name, "net_tap") == 0) {
 			pair_port_id = port_id;
 			pair_found = true;
 			if (init_port(port_id, true) != 0) {
@@ -400,6 +391,11 @@ main(int argc, char **argv)
 			LOG_INFO("use %s(%d) as pair dev", dev_info.device->name, port_id);
 		}
 	}
+
+	if (!vhost_found)
+		rte_exit(EXIT_FAILURE, "vhost dev not found");
+	if (!pair_found)
+		rte_exit(EXIT_FAILURE, "tap dev not found");
 
 	/* init vhost rdma */
 	vhost_rdma_construct(dev_pathname, pair_port_id, mbuf_pool, rdma_tx_ring, rdma_rx_ring);
