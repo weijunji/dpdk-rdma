@@ -48,27 +48,20 @@ struct virtio_rdma_config {
     __le32         max_mr;
     __le32         max_pd;
     __le32         max_qp_rd_atom;
-    __le32         max_ee_rd_atom;
     __le32         max_res_rd_atom;
     __le32         max_qp_init_rd_atom;
-    __le32         max_ee_init_rd_atom;
     __le32         atomic_cap;
-    __le32         max_ee;
-    __le32         max_rdd;
     __le32         max_mw;
     __le32         max_mcast_grp;
     __le32         max_mcast_qp_attach;
     __le32         max_total_mcast_qp_attach;
     __le32         max_ah;
-    __le32         max_srq;
-    __le32         max_srq_wr;
-    __le32         max_srq_sge;
     __le32         max_fast_reg_page_list_len;
     __le32         max_pi_fast_reg_page_list_len;
     __le16         max_pkeys;
-	uint8_t           local_ca_ack_delay;
+    uint8_t        local_ca_ack_delay;
 
-    uint8_t           reserved[64];
+    uint8_t        reserved[64];
 } __rte_packed;
 
 
@@ -91,17 +84,10 @@ enum {
     VIRTIO_CMD_MODIFY_QP,
 	VIRTIO_CMD_QUERY_QP,
     VIRTIO_CMD_DESTROY_QP,
-	VIRTIO_CMD_CREATE_UC,
-	VIRTIO_CMD_DEALLOC_UC,
 	VIRTIO_CMD_QUERY_PKEY,
     VIRTIO_CMD_ADD_GID,
     VIRTIO_CMD_DEL_GID,
     VIRTIO_CMD_REQ_NOTIFY_CQ,
-	VIRTIO_CMD_IW_ACCEPT,
-    VIRTIO_CMD_IW_CONNECT,
-    VIRTIO_CMD_IW_CREATE_LISTEN,
-    VIRTIO_CMD_IW_DESTROY_LISTEN,
-    VIRTIO_CMD_IW_REJECT,
 	VIRTIO_MAX_CMD_NUM,
 };
 
@@ -110,24 +96,16 @@ struct virtio_rdma_port_attr {
 	enum ib_mtu	 max_mtu;
 	enum ib_mtu	 active_mtu;
 	uint32_t          phys_mtu;
-	int			 gid_tbl_len;
-	unsigned int ip_gids:1;
-	uint32_t			 port_cap_flags;
+	int               gid_tbl_len;
+	uint32_t          port_cap_flags;
 	uint32_t          max_msg_sz;
 	uint32_t          bad_pkey_cntr;
 	uint32_t          qkey_viol_cntr;
 	uint16_t          pkey_tbl_len;
-	uint32_t          sm_lid;
-	uint32_t          lid;
-	uint8_t           lmc;
-	uint8_t           max_vl_num;
-	uint8_t           sm_sl;
-	uint8_t           subnet_timeout;
-	uint8_t           init_type_reply;
 	uint8_t           active_width;
 	uint16_t          active_speed;
 	uint8_t           phys_state;
-	uint16_t          port_cap_flags2;
+	uint32_t          reserved[32];
 };
 
 enum virtio_rdma_wr_opcode {
@@ -187,10 +165,7 @@ struct virtio_rdma_ah_attr {
 	uint8_t		static_rate;
 	uint8_t		port_num;
 	uint8_t		ah_flags;
-	uint8_t		type;
-	union {
-		struct roce_ah_attr roce;
-	};
+	struct roce_ah_attr roce;
 };
 
 struct virtio_rdma_qp_cap {
@@ -269,16 +244,23 @@ struct cmd_destroy_cq {
     uint32_t cqn;
 };
 
-struct cmd_create_pd {
-	uint32_t ctx_handle;
-};
-
 struct rsp_create_pd {
     uint32_t pdn;
 };
 
 struct cmd_destroy_pd {
     uint32_t pdn;
+};
+
+struct cmd_get_dma_mr {
+    uint32_t pdn;
+    uint32_t access_flags;
+};
+
+struct rsp_get_dma_mr {
+    uint32_t mrn;
+    uint32_t lkey;
+    uint32_t rkey;
 };
 
 struct cmd_create_mr {
@@ -326,8 +308,6 @@ struct rsp_reg_user_mr {
 
 struct cmd_dereg_mr {
     uint32_t mrn;
-
-	uint8_t is_user_mr;
 };
 
 struct rsp_dereg_mr {
@@ -344,8 +324,6 @@ struct cmd_create_qp {
     uint32_t max_recv_wr;
     uint32_t max_recv_sge;
     uint32_t recv_cqn;
-    uint8_t is_srq;
-    uint32_t srq_handle;
 
 	uint32_t max_inline_data;
 };
@@ -382,18 +360,6 @@ struct cmd_query_gid {
     uint32_t index;
 };
 
-struct cmd_create_uc {
-	uint64_t pfn;
-};
-
-struct rsp_create_uc {
-	uint32_t ctx_handle;
-};
-
-struct cmd_dealloc_uc {
-	uint32_t ctx_handle;
-};
-
 struct cmd_query_pkey {
 	uint32_t port;
 	uint16_t index;
@@ -417,7 +383,6 @@ struct virtio_rdma_av {
     uint32_t pdn;
 	uint32_t sl_tclass_flowlabel;
 	uint8_t dgid[16];
-	uint8_t src_path_bits;
 	uint8_t gid_index;
 	uint8_t stat_rate;
 	uint8_t hop_limit;
@@ -426,8 +391,6 @@ struct virtio_rdma_av {
 };
 
 struct cmd_post_send {
-	uint32_t qpn;
-	uint32_t is_kernel;
 	uint32_t num_sge;
 
 	int send_flags;
@@ -464,9 +427,6 @@ struct cmd_post_send {
 };
 
 struct cmd_post_recv {
-	uint32_t qpn;
-	uint32_t is_kernel;
-
 	uint32_t num_sge;
 	uint64_t wr_id;
 };

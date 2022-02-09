@@ -320,13 +320,6 @@ struct vhost_rdma_qp {
 	rte_atomic32_t refcnt;
 };
 
-struct vhost_rdma_ucontext {
-	uint32_t pfn;
-
-	uint32_t ucn;
-	rte_atomic32_t refcnt;
-};
-
 static inline int ib_mtu_enum_to_int(enum ib_mtu mtu)
 {
 	switch (mtu) {
