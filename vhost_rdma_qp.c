@@ -343,10 +343,14 @@ alloc_rd_atomic_resources(struct vhost_rdma_qp *qp, unsigned int n)
 {
 	qp->resp.res_head = 0;
 	qp->resp.res_tail = 0;
-	qp->resp.resources = rte_zmalloc(NULL, sizeof(struct resp_res) * n, 0);
 
-	if (!qp->resp.resources)
-		return -ENOMEM;
+	if (n == 0) {
+		qp->resp.resources = NULL;
+	} else {
+		qp->resp.resources = rte_zmalloc(NULL, sizeof(struct resp_res) * n, 0);
+		if (!qp->resp.resources)
+			return -ENOMEM;
+	}
 
 	return 0;
 }

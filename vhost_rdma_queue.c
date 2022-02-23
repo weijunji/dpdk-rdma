@@ -187,6 +187,9 @@ vhost_rdma_handle_rq(__rte_unused void *arg)
 
 		queue->producer_index++;
 	}
+
+	if (qp->resp.state == QP_STATE_ERROR)
+		vhost_rdma_run_task(&qp->resp.task, 1);
 }
 
 int

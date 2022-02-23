@@ -248,6 +248,8 @@ vhost_rdma_create_mr(struct vhost_rdma_dev *dev, struct iovec *in,
 	mr->state = VHOST_MR_STATE_FREE;
 	mr->npages = 0;
 	vhost_rdma_mr_init_key(mr, mrn);
+	// set rkey for fast_reg
+	mr->rkey = mr->lkey;
 	mr->mrn = mrn;
 
 	rsp->lkey = mr->lkey;
@@ -662,7 +664,7 @@ vhost_rdma_init_ib(struct vhost_rdma_dev *dev) {
 	dev->config.page_size_cap				= 0xfffff000;
 	dev->config.max_qp						= 64;
 	dev->config.max_qp_wr					= 0x4000;
-	dev->config.device_cap_flags			= 0;
+	dev->config.device_cap_flags			= (1 << 21); // IB_DEVICE_MEM_MGT_EXTENSIONS
 	dev->config.max_send_sge				= 32;
 	dev->config.max_recv_sge				= 32;
 	dev->config.max_sge_rd					= 32;
