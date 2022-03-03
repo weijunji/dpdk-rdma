@@ -23,6 +23,7 @@
 #include <rte_ring.h>
 #include <rte_vhost.h>
 
+#include "vhost_net.h"
 #include "vhost_user.h"
 #include "vhost_rdma.h"
 #include "vhost_rdma_ib.h"
@@ -32,7 +33,7 @@ struct vhost_rdma_dev g_vhost_rdma_dev;
 
 // FIXME: new_device never called because not all vq have been used.
 static int
-new_device(__rte_unused int vid)
+new_device(int vid)
 {
 	struct vhost_rdma_dev *dev = &g_vhost_rdma_dev;
 
@@ -41,6 +42,7 @@ new_device(__rte_unused int vid)
 	if (dev->started)
 		return 0;
 
+	vs_vhost_net_setup(vid);
 	/* device has been started */
 	dev->started = 1;
 	return 0;
@@ -57,6 +59,7 @@ destroy_device(__rte_unused int vid)
 	if (!dev->started)
 		return;
 
+	vs_vhost_net_remove();
 	vhost_rdma_destroy_ib(dev);
 
 	for (int i = 0; i < NUM_OF_RDMA_QUEUES; i++) {
@@ -65,6 +68,8 @@ destroy_device(__rte_unused int vid)
 		rte_vhost_set_vring_base(dev->vid, i,
 					 vq->last_avail_idx,
 					 vq->last_used_idx);
+
+		vq->enabled = false;
 	}
 
 	free(dev->mem);
@@ -147,11 +152,11 @@ vring_state_changed(int vid, uint16_t queue_id, int enable) {
 		 * informations through ctrl vq in ib_register_device() when
 		 * the device is not enabled.
 		 */
-		if (queue_id == 0 && !dev->ctrl_intr_registed) {
+		if (queue_id == VHOST_NET_ROCE_CTRL_QUEUE && !dev->ctrl_intr_registed) {
 			assert(rte_vhost_get_mem_table(vid, &dev->mem) == 0);
 			assert(dev->mem != NULL);
 
-			dev->ctrl_intr_handle.fd = dev->vqs[0].vring.kickfd;
+			dev->ctrl_intr_handle.fd = dev->vqs[VHOST_NET_ROCE_CTRL_QUEUE].vring.kickfd;
 			dev->ctrl_intr_handle.type = RTE_INTR_HANDLE_EXT;
 			rte_intr_callback_register(&dev->ctrl_intr_handle,
 										vhost_rdma_handle_ctrl, dev);
@@ -218,6 +223,10 @@ vhost_rdma_construct(const char *path, uint16_t eth_port_id,
 
 	/* set vhost user protocol features */
 	vhost_rdma_install_rte_compat_hooks(path);
+
+	dev->rdma_vqs = &dev->vqs[VHOST_NET_ROCE_CTRL_QUEUE];
+
+	vs_vhost_net_construct(dev->vqs);
 
 	vhost_rdma_init_ib(dev);
 	rte_spinlock_init(&dev->port_lock);

@@ -12,6 +12,7 @@ executable('dpdk-rdma',
   [
     'main.c',
     'verbs.c',
+    'vhost_net.c',
     'vhost_user.c',
     'vhost_rdma.c',
     'vhost_rdma_ib.c',

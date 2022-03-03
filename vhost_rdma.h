@@ -30,6 +30,8 @@
 #include "vhost_user.h"
 #include "vhost_rdma_pool.h"
 
+#define MAX_PKTS_BURST 32
+
 #define TARGET_PAGE_SIZE 4096
 #define PAGE_MASK	(~(TARGET_PAGE_SIZE-1))
 
@@ -57,7 +59,12 @@
 
 #define ROCE_V2_UDP_DPORT 4791
 
-#define NUM_OF_RDMA_QUEUES 256
+#define NUM_OF_RDMA_QUEUES 195 // 2 + 1 + 64 * 2 + 64
+
+#define VHOST_NET_RXQ 0
+#define VHOST_NET_TXQ 1
+#define VHOST_NET_ROCE_CTRL_QUEUE 2
+
 #define NUM_OF_RDMA_PORT 1
 
 #define VHOST_MAX_GID_TBL_LEN 512
@@ -72,12 +79,14 @@
 
 #define IB_DEFAULT_PKEY_FULL	0xFFFF
 
+#define VIRTIO_NET_F_ROCE	55
+
 /* VIRTIO_F_EVENT_IDX is NOT supported now */
 #define VHOST_RDMA_FEATURE ((1ULL << VIRTIO_F_VERSION_1) |\
 	(1ULL << VIRTIO_RING_F_INDIRECT_DESC) | \
 	(1ULL << VHOST_USER_F_PROTOCOL_FEATURES) | \
-	(1ULL << VHOST_USER_PROTOCOL_F_STATUS))
-// TODO: rdma features
+	(1ULL << VHOST_USER_PROTOCOL_F_STATUS) | \
+	(1ULL << VIRTIO_NET_F_ROCE))
 
 struct vhost_rdma_gid {
 	#define VHOST_RDMA_GID_TYPE_ILLIGAL (-1u)
@@ -116,6 +125,7 @@ struct vhost_rdma_dev {
 	struct rte_ring* tx_ring;
 	struct rte_ring* rx_ring;
 	struct vhost_queue vqs[NUM_OF_RDMA_QUEUES];
+	struct vhost_queue *rdma_vqs;
 	struct vhost_queue *cq_vqs;
 	struct vhost_queue *qp_vqs;
 

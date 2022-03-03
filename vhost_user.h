@@ -95,9 +95,6 @@ struct vhost_queue {
 	uint16_t id;
 
 	bool enabled;
-
-	bool avail_wrap_counter;
-	bool used_wrap_counter;
 };
 
 static __rte_always_inline uint16_t

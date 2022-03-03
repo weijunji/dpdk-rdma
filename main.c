@@ -32,6 +32,7 @@
 #include <rte_mbuf.h>
 #include <rte_ring.h>
 
+#include "vhost_net.h"
 #include "vhost_rdma.h"
 #include "vhost_rdma_hdr.h"
 
@@ -47,8 +48,6 @@
 #define LOG_WARN(f, ...) RTE_LOG(WARNING, ETHER, f "\n", ##__VA_ARGS__)
 #define LOG_ERR(f, ...) RTE_LOG(ERR, ETHER, f "\n", ##__VA_ARGS__)
 
-#define MAX_PKTS_BURST 32
-
 static struct rte_eth_conf port_conf_default;
 static struct rte_eth_conf port_conf_offload = {
 	.txmode = {
@@ -63,7 +62,7 @@ static struct rte_ring* rdma_tx_ring;
 
 static char dev_pathname[PATH_MAX] = "/tmp/vhost-rdma0";
 
-uint16_t vhost_port_id, pair_port_id;
+uint16_t pair_port_id;
 
 volatile bool force_quit;
 
@@ -99,7 +98,7 @@ eth_rx() {
 	uint16_t nb_rx_pkts, nb_tx_pkts;
 
 	/* send ethernet pkts */
-	nb_rx_pkts = rte_eth_rx_burst(vhost_port_id, 0, pkts, MAX_PKTS_BURST);
+	nb_rx_pkts = vs_dequeue_pkts(VHOST_NET_TXQ, mbuf_pool, pkts, MAX_PKTS_BURST);
 	if (nb_rx_pkts != 0) {
 		#ifdef DEBUG_ETHERNET
 		LOG_DEBUG("rx got %d packets", nb_rx_pkts);
@@ -113,17 +112,6 @@ eth_rx() {
 			LOG_DEBUG(" -> : 0x%x %s %s", rte_be_to_cpu_16(eth->ether_type), sbuf, dbuf);
 		}
 		#endif
-
-		// set l4_len to let dpdk tap calculate correct cksum
-		for (int i = 0; i < nb_rx_pkts; i++) {
-			if ((pkts[i]->ol_flags & PKT_TX_L4_MASK) == PKT_TX_TCP_CKSUM) {
-				pkts[i]->l4_len = sizeof(struct rte_tcp_hdr);
-			}
-
-			if ((pkts[i]->ol_flags & PKT_TX_L4_MASK) == PKT_TX_UDP_CKSUM) {
-				pkts[i]->l4_len = sizeof(struct rte_udp_hdr);
-			}
-		}
 
 		nb_tx_pkts = rte_eth_tx_burst(pair_port_id, 0, pkts, nb_rx_pkts);
 		if (unlikely(nb_tx_pkts < nb_rx_pkts)) {
@@ -200,7 +188,7 @@ eth_tx() {
 		}
 
 		/* forward pkt to vhost_net */
-		if (unlikely(rte_eth_tx_burst(vhost_port_id, 0, &pkts[i], 1) != 1)) {
+		if (unlikely(vs_enqueue_pkts(VHOST_NET_RXQ, &pkts[i], 1) != 1)) {
 			rte_pktmbuf_free(pkts[i]);
 			LOG_DEBUG_DP("tx drop one pkt");
 		}
@@ -225,7 +213,6 @@ signal_handler(__rte_unused int signum)
 	// close dev to destroy vhost sock file
 	force_quit = true;
     vhost_rdma_destroy(dev_pathname);
-	rte_eth_dev_close(vhost_port_id);
 	rte_exit(0, "Exiting on signal_handler\n");
 }
 
@@ -318,7 +305,6 @@ main(int argc, char **argv)
 	int ret;
 	uint16_t port_id;
 	struct rte_eth_dev_info dev_info;
-	bool vhost_found = false;
 	bool pair_found = false;
 
 	signal(SIGINT, signal_handler);
@@ -375,14 +361,7 @@ main(int argc, char **argv)
 	RTE_ETH_FOREACH_DEV(port_id) {
 		rte_eth_dev_info_get(port_id, &dev_info);
 
-		if (!vhost_found && strcmp(dev_info.driver_name, "net_vhost") == 0) {
-			vhost_port_id = port_id;
-			vhost_found = true;
-			if (init_port(port_id, false) != 0) {
-				rte_exit(EXIT_FAILURE, "%s\n", rte_strerror(rte_errno));
-			}
-			LOG_INFO("use %s(%d) as vhost dev", dev_info.device->name, port_id);
-		} else if (!pair_found && strcmp(dev_info.driver_name, "net_tap") == 0) {
+		if (!pair_found && strcmp(dev_info.driver_name, "net_tap") == 0) {
 			pair_port_id = port_id;
 			pair_found = true;
 			if (init_port(port_id, true) != 0) {
@@ -392,8 +371,6 @@ main(int argc, char **argv)
 		}
 	}
 
-	if (!vhost_found)
-		rte_exit(EXIT_FAILURE, "vhost dev not found");
 	if (!pair_found)
 		rte_exit(EXIT_FAILURE, "tap dev not found");
 

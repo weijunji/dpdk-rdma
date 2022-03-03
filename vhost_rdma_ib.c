@@ -586,7 +586,7 @@ struct {
 void
 vhost_rdma_handle_ctrl(void* arg) {
 	struct vhost_rdma_dev* dev = arg;
-	struct vhost_queue *ctrl_vq = &dev->vqs[0];
+	struct vhost_queue *ctrl_vq = &dev->rdma_vqs[0];
 	int kick_fd, nbytes;
 	eventfd_t kick_data;
 	struct iovec iovs[4];
@@ -711,8 +711,8 @@ vhost_rdma_init_ib(struct vhost_rdma_dev *dev) {
 		dev->gid_tbl[i].type = VHOST_RDMA_GID_TYPE_ILLIGAL;
 	}
 
-	dev->cq_vqs = &dev->vqs[1];
-	dev->qp_vqs = &dev->vqs[1 + dev->config.max_cq];
+	dev->cq_vqs = &dev->rdma_vqs[1];
+	dev->qp_vqs = &dev->rdma_vqs[1 + dev->config.max_cq];
 
 	vhost_rdma_pool_init(&dev->pd_pool, "pd_pool", dev->config.max_pd,
 						sizeof(struct vhost_rdma_pd), false, NULL);
