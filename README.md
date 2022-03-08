@@ -19,6 +19,7 @@ ninja
 * Start dpdk-rdma
 ```bash
 ninja && sudo ./dpdk-rdma --vdev 'net_tap0' --lcore '1-3'
+sudo brctl addif virbr0 dtap0
 ```
 
 * Run vm with following arguments using libvirt
@@ -30,3 +31,19 @@ ninja && sudo ./dpdk-rdma --vdev 'net_tap0' --lcore '1-3'
     <qemu:arg value='vhost-user-rdma-pci,page-per-vq,chardev=vurdma'/>
 </qemu:commandline>
 ```
+
+## DEBUG
+
+Add following to `meson.build` to debug.
+
+```
+c_args: [
+    '-DDEBUG_RDMA',
+    '-DDEBUG_RDMA_DP',
+    '-DDEBUG_ETHERNET',
+]
+```
+
+* `DEBUG_RDMA`: RDMA control panel
+* `DEBUG_RDMA_DP`: RDMA data panel
+* `DEBUG_ETHERNET`: Ethernet
