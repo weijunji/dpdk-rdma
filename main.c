@@ -207,13 +207,10 @@ eth_main_loop(__rte_unused void* arg) {
 	return 0;
 }
 
-static __rte_noreturn void
+static void
 signal_handler(__rte_unused int signum)
 {
-	// close dev to destroy vhost sock file
 	force_quit = true;
-    vhost_rdma_destroy(dev_pathname);
-	rte_exit(0, "Exiting on signal_handler\n");
 }
 
 static int
@@ -383,6 +380,8 @@ main(int argc, char **argv)
 	eth_main_loop(NULL);
 
 	rte_eal_mp_wait_lcore();
+
+	vhost_rdma_destroy(dev_pathname);
 
 	rte_eal_cleanup();
 

@@ -128,6 +128,8 @@ vhost_rdma_run_task(struct vhost_rdma_task *task, int sched)
 	}
 }
 
+extern volatile bool force_quit;
+
 int
 vhost_rdma_scheduler(void* arg)
 {
@@ -139,7 +141,7 @@ vhost_rdma_scheduler(void* arg)
 	if (rte_lcore_index(rte_lcore_id()) == 1) {
 		// we cannot use multiple threads to recv pkts, which will cause pkts
 		// disorder, and finally cause pkt retransmit?
-		while (1) {
+		while (!force_quit) {
 			// recv_pkts
 			if (rte_ring_dequeue(dev->rx_ring, (void**)&pkt) == 0) {
 				RDMA_LOG_DEBUG_DP("recv pkt");
@@ -148,7 +150,7 @@ vhost_rdma_scheduler(void* arg)
 		}
 	} else {
 		rte_timer_subsystem_init();
-		while (dev->task_ring) {
+		while (!force_quit) {
 			// task
 			if (rte_ring_dequeue(dev->task_ring, (void**)&task) == 0) {
 				RDMA_LOG_DEBUG_DP("task (%s) start", task->name);
